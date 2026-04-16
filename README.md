@@ -63,6 +63,7 @@ The default workflow scaffolded by `ghost-claude init`:
 3. Run the relevant tests and fix failures.
 4. Ask Codex for a review.
 5. Mark the TODO item done.
+6. Commit the changes with a descriptive message.
 
 ## Subcommands
 

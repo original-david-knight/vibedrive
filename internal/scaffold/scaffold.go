@@ -58,6 +58,16 @@ steps:
       ghost-claude only proceeds to the next item when the first incomplete checkbox changes.
 
       If it is not fully complete, leave it unchecked and explain why.
+
+  - name: commit-changes
+    type: claude
+    prompt: |
+      Stage and commit all changes from this iteration with git.
+      Write a clear, conventional commit message that summarizes what this TODO item accomplished:
+      {{ .NextTodo.Raw }}
+
+      Include both the code changes and the {{ .TodoFile }} update in a single commit.
+      If there is nothing to commit, skip this step.
 `
 
 const sampleTODO = `# TODO
