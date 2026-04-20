@@ -21,15 +21,18 @@ const (
 )
 
 type Config struct {
-	Path                 string       `yaml:"-"`
-	BaseDir              string       `yaml:"-"`
-	DryRun               bool         `yaml:"dry_run"`
-	Workspace            string       `yaml:"workspace"`
-	TodoFile             string       `yaml:"todo_file"`
-	MaxIterations        int          `yaml:"max_iterations"`
-	MaxStalledIterations int          `yaml:"max_stalled_iterations"`
-	Claude               ClaudeConfig `yaml:"claude"`
-	Steps                []Step       `yaml:"steps"`
+	Path                 string              `yaml:"-"`
+	BaseDir              string              `yaml:"-"`
+	DryRun               bool                `yaml:"dry_run"`
+	Workspace            string              `yaml:"workspace"`
+	TodoFile             string              `yaml:"todo_file"`
+	PlanFile             string              `yaml:"plan_file"`
+	MaxIterations        int                 `yaml:"max_iterations"`
+	MaxStalledIterations int                 `yaml:"max_stalled_iterations"`
+	DefaultWorkflow      string              `yaml:"default_workflow"`
+	Claude               ClaudeConfig        `yaml:"claude"`
+	Steps                []Step              `yaml:"steps"`
+	Workflows            map[string]Workflow `yaml:"workflows"`
 }
 
 type ClaudeConfig struct {
@@ -47,9 +50,14 @@ type Step struct {
 	Command         []string          `yaml:"command"`
 	WorkingDir      string            `yaml:"working_dir"`
 	Env             map[string]string `yaml:"env"`
+	FreshSession    bool              `yaml:"fresh_session"`
 	Timeout         string            `yaml:"timeout"`
 	ContinueOnError bool              `yaml:"continue_on_error"`
 	Disabled        bool              `yaml:"disabled"`
+}
+
+type Workflow struct {
+	Steps []Step `yaml:"steps"`
 }
 
 func Load(path string) (*Config, error) {
@@ -87,6 +95,13 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.TodoFile = filepath.Clean(cfg.TodoFile)
 
+	if cfg.PlanFile != "" {
+		if !filepath.IsAbs(cfg.PlanFile) {
+			cfg.PlanFile = filepath.Join(cfg.Workspace, cfg.PlanFile)
+		}
+		cfg.PlanFile = filepath.Clean(cfg.PlanFile)
+	}
+
 	if cfg.Claude.Command == "" {
 		cfg.Claude.Command = "claude"
 	}
@@ -104,6 +119,14 @@ func Load(path string) (*Config, error) {
 		if cfg.Steps[i].Type == "" {
 			cfg.Steps[i].Type = StepTypeClaude
 		}
+	}
+	for name, workflow := range cfg.Workflows {
+		for i := range workflow.Steps {
+			if workflow.Steps[i].Type == "" {
+				workflow.Steps[i].Type = StepTypeClaude
+			}
+		}
+		cfg.Workflows[name] = workflow
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -140,26 +163,35 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("unsupported claude.session_strategy %q", c.Claude.SessionStrategy)
 	}
 
-	if len(c.Steps) == 0 {
-		return fmt.Errorf("at least one step is required")
+	if len(c.Steps) == 0 && len(c.Workflows) == 0 {
+		return fmt.Errorf("at least one step or workflow is required")
 	}
 
 	for i, step := range c.Steps {
-		if step.Name == "" {
-			return fmt.Errorf("steps[%d].name is required", i)
+		if err := validateStep(fmt.Sprintf("steps[%d]", i), step); err != nil {
+			return err
 		}
+	}
 
-		switch normalize(step.Type) {
-		case StepTypeClaude:
-			if strings.TrimSpace(step.Prompt) == "" {
-				return fmt.Errorf("steps[%d].prompt is required for claude steps", i)
+	for name, workflow := range c.Workflows {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("workflow names must not be empty")
+		}
+		if len(workflow.Steps) == 0 {
+			return fmt.Errorf("workflows.%s.steps must not be empty", name)
+		}
+		for i, step := range workflow.Steps {
+			if err := validateStep(fmt.Sprintf("workflows.%s.steps[%d]", name, i), step); err != nil {
+				return err
 			}
-		case StepTypeExec:
-			if len(step.Command) == 0 {
-				return fmt.Errorf("steps[%d].command is required for exec steps", i)
+		}
+	}
+
+	if c.PlanFile != "" {
+		if strings.TrimSpace(c.DefaultWorkflow) != "" {
+			if _, ok := c.Workflows[c.DefaultWorkflow]; !ok && len(c.Steps) == 0 {
+				return fmt.Errorf("default_workflow %q does not exist", c.DefaultWorkflow)
 			}
-		default:
-			return fmt.Errorf("steps[%d].type %q is not supported", i, step.Type)
 		}
 	}
 
@@ -182,4 +214,25 @@ func defaultConfig() Config {
 
 func normalize(value string) string {
 	return strings.TrimSpace(strings.ToLower(value))
+}
+
+func validateStep(path string, step Step) error {
+	if step.Name == "" {
+		return fmt.Errorf("%s.name is required", path)
+	}
+
+	switch normalize(step.Type) {
+	case StepTypeClaude:
+		if strings.TrimSpace(step.Prompt) == "" {
+			return fmt.Errorf("%s.prompt is required for claude steps", path)
+		}
+	case StepTypeExec:
+		if len(step.Command) == 0 {
+			return fmt.Errorf("%s.command is required for exec steps", path)
+		}
+	default:
+		return fmt.Errorf("%s.type %q is not supported", path, step.Type)
+	}
+
+	return nil
 }

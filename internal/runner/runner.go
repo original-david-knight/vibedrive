@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"ghost_claude/internal/automation"
 	"ghost_claude/internal/claude"
 	"ghost_claude/internal/config"
+	"ghost_claude/internal/plan"
 	"ghost_claude/internal/render"
 	"ghost_claude/internal/todo"
 )
@@ -23,17 +25,23 @@ type Runner struct {
 	stderr io.Writer
 	agent  agentClient
 
-	newSession func(string) (*claude.Session, error)
+	executablePath string
+	newSession     func(string) (*claude.Session, error)
 }
 
 type TemplateData struct {
-	ConfigPath string
-	Iteration  int
-	SessionID  string
-	Workspace  string
-	TodoFile   string
-	NextTodo   todo.Item
-	Now        time.Time
+	ConfigPath     string
+	ExecutablePath string
+	Iteration      int
+	SessionID      string
+	TaskResultPath string
+	Workspace      string
+	TodoFile       string
+	NextTodo       todo.Item
+	PlanFile       string
+	Plan           *plan.File
+	Task           plan.Task
+	Now            time.Time
 }
 
 type agentClient interface {
@@ -56,11 +64,22 @@ func New(cfg *config.Config, stdout, stderr io.Writer) (*Runner, error) {
 		return nil, err
 	}
 
+	executablePath, err := os.Executable()
+	if err != nil {
+		executablePath = os.Args[0]
+	}
+	if !filepath.IsAbs(executablePath) {
+		if absPath, absErr := filepath.Abs(executablePath); absErr == nil {
+			executablePath = absPath
+		}
+	}
+
 	return &Runner{
-		cfg:    cfg,
-		stdout: stdout,
-		stderr: stderr,
-		agent:  agent,
+		cfg:            cfg,
+		stdout:         stdout,
+		stderr:         stderr,
+		agent:          agent,
+		executablePath: executablePath,
 		newSession: func(strategy string) (*claude.Session, error) {
 			return claude.NewSession(strategy)
 		},
@@ -68,6 +87,13 @@ func New(cfg *config.Config, stdout, stderr io.Writer) (*Runner, error) {
 }
 
 func (r *Runner) Run(ctx context.Context) (err error) {
+	if strings.TrimSpace(r.cfg.PlanFile) != "" {
+		return r.runPlan(ctx)
+	}
+	return r.runTodo(ctx)
+}
+
+func (r *Runner) runTodo(ctx context.Context) error {
 	stalled := 0
 
 	for iteration := 1; ; iteration++ {
@@ -91,48 +117,18 @@ func (r *Runner) Run(ctx context.Context) (err error) {
 			fmt.Fprintf(r.stdout, "Next TODO: %s (line %d)\n", nextTodo.Text, nextTodo.Line)
 		}
 
-		session, err := r.createSession()
-		if err != nil {
-			return err
-		}
-
 		data := TemplateData{
-			ConfigPath: r.cfg.Path,
-			Iteration:  iteration,
-			SessionID:  session.ID,
-			Workspace:  r.cfg.Workspace,
-			TodoFile:   r.cfg.TodoFile,
-			NextTodo:   nextTodo,
-			Now:        time.Now(),
+			ConfigPath:     r.cfg.Path,
+			ExecutablePath: r.executablePath,
+			Iteration:      iteration,
+			Workspace:      r.cfg.Workspace,
+			TodoFile:       r.cfg.TodoFile,
+			NextTodo:       nextTodo,
+			Now:            time.Now(),
 		}
 
-		var stepErr error
-		for _, step := range r.cfg.Steps {
-			if step.Disabled {
-				continue
-			}
-
-			if err := r.runStep(ctx, session, step, data); err != nil {
-				if step.ContinueOnError {
-					if r.shouldLogProgress() {
-						fmt.Fprintf(r.stderr, "warning: step %q failed but continue_on_error is set: %v\n", step.Name, err)
-					}
-					continue
-				}
-				stepErr = fmt.Errorf("step %q failed: %w", step.Name, err)
-				break
-			}
-		}
-
-		closeErr := r.agent.Close(session)
-		if stepErr != nil {
-			if closeErr != nil {
-				return fmt.Errorf("%w; also failed to close claude session: %v", stepErr, closeErr)
-			}
-			return stepErr
-		}
-		if closeErr != nil {
-			return closeErr
+		if err := r.runSteps(ctx, r.cfg.Steps, data); err != nil {
+			return err
 		}
 
 		if r.cfg.DryRun {
@@ -173,11 +169,182 @@ func (r *Runner) Run(ctx context.Context) (err error) {
 	}
 }
 
+func (r *Runner) runPlan(ctx context.Context) error {
+	stalled := 0
+
+	for iteration := 1; ; iteration++ {
+		if r.cfg.MaxIterations > 0 && iteration > r.cfg.MaxIterations {
+			return fmt.Errorf("stopped after reaching max_iterations=%d", r.cfg.MaxIterations)
+		}
+
+		currentPlan, err := plan.Load(r.cfg.PlanFile)
+		if err != nil {
+			return err
+		}
+
+		task, err := currentPlan.FindNextReady()
+		if err != nil {
+			switch {
+			case errors.Is(err, plan.ErrAllTasksDone):
+				if r.shouldLogProgress() {
+					fmt.Fprintln(r.stdout, "All plan tasks are complete.")
+				}
+				return nil
+			case errors.Is(err, plan.ErrNoReadyTasks):
+				return fmt.Errorf("no ready tasks remain in %s; unfinished tasks: %s", r.cfg.PlanFile, summarizeUnfinishedTasks(currentPlan.UnfinishedTasks()))
+			default:
+				return err
+			}
+		}
+
+		steps, workflowName, err := r.stepsForTask(task)
+		if err != nil {
+			return err
+		}
+
+		if r.shouldLogProgress() {
+			fmt.Fprintf(r.stdout, "\n== Iteration %d ==\n", iteration)
+			fmt.Fprintf(r.stdout, "Next task: %s (%s) via workflow %s\n", task.Title, task.ID, workflowName)
+		}
+
+		data := TemplateData{
+			ConfigPath:     r.cfg.Path,
+			ExecutablePath: r.executablePath,
+			Iteration:      iteration,
+			TaskResultPath: automation.ResultPath(r.cfg.Workspace, task.ID),
+			Workspace:      r.cfg.Workspace,
+			TodoFile:       r.cfg.TodoFile,
+			PlanFile:       r.cfg.PlanFile,
+			Plan:           currentPlan,
+			Task:           task,
+			Now:            time.Now(),
+		}
+
+		if err := r.runSteps(ctx, steps, data); err != nil {
+			return err
+		}
+
+		if r.cfg.DryRun {
+			fmt.Fprintln(r.stdout, "\nDry run complete.")
+			return nil
+		}
+
+		nextPlan, err := plan.Load(r.cfg.PlanFile)
+		if err != nil {
+			return err
+		}
+
+		updatedTask, ok := nextPlan.FindTask(task.ID)
+		if !ok {
+			return fmt.Errorf("task %q disappeared from %s during iteration %d", task.ID, r.cfg.PlanFile, iteration)
+		}
+
+		if updatedTask.ProgressSignature() == task.ProgressSignature() {
+			stalled++
+			if stalled >= r.cfg.MaxStalledIterations {
+				return fmt.Errorf(
+					"iteration %d made no task progress; %q (%s) still has status %q in %s. "+
+						"The workflow must update the selected task's status or notes when work progresses",
+					iteration,
+					updatedTask.Title,
+					updatedTask.ID,
+					updatedTask.Status,
+					r.cfg.PlanFile,
+				)
+			}
+			if r.shouldLogProgress() {
+				fmt.Fprintf(r.stderr, "warning: no task progress after iteration %d; retrying (%d/%d)\n", iteration, stalled, r.cfg.MaxStalledIterations)
+			}
+		} else {
+			stalled = 0
+		}
+	}
+}
+
 func (r *Runner) createSession() (*claude.Session, error) {
 	if r.newSession != nil {
 		return r.newSession(r.cfg.Claude.SessionStrategy)
 	}
 	return claude.NewSession(r.cfg.Claude.SessionStrategy)
+}
+
+func (r *Runner) runSteps(ctx context.Context, steps []config.Step, data TemplateData) error {
+	var sharedSession *claude.Session
+	closeSharedSession := func(runErr error) error {
+		if sharedSession == nil {
+			return runErr
+		}
+
+		closeErr := r.agent.Close(sharedSession)
+		if runErr != nil {
+			if closeErr != nil {
+				return fmt.Errorf("%w; also failed to close claude session: %v", runErr, closeErr)
+			}
+			return runErr
+		}
+
+		return closeErr
+	}
+
+	for _, step := range steps {
+		if step.Disabled {
+			continue
+		}
+
+		err := func() error {
+			var (
+				session          *claude.Session
+				closeStepSession bool
+				err              error
+			)
+
+			if strings.EqualFold(step.Type, config.StepTypeClaude) {
+				switch {
+				case step.FreshSession:
+					session, err = r.createSession()
+					if err != nil {
+						return err
+					}
+					closeStepSession = true
+				case sharedSession == nil:
+					sharedSession, err = r.createSession()
+					if err != nil {
+						return err
+					}
+					session = sharedSession
+				default:
+					session = sharedSession
+				}
+			}
+
+			runErr := r.runStep(ctx, session, step, data)
+			if closeStepSession {
+				closeErr := r.agent.Close(session)
+				if runErr != nil {
+					if closeErr != nil {
+						return fmt.Errorf("%w; also failed to close claude session: %v", runErr, closeErr)
+					}
+					return runErr
+				}
+				if closeErr != nil {
+					return closeErr
+				}
+			}
+
+			return runErr
+		}()
+		if err != nil {
+			if step.ContinueOnError {
+				if r.shouldLogProgress() {
+					fmt.Fprintf(r.stderr, "warning: step %q failed but continue_on_error is set: %v\n", step.Name, err)
+				}
+				continue
+			}
+			return closeSharedSession(fmt.Errorf("step %q failed: %w", step.Name, err))
+		}
+	}
+
+	return closeSharedSession(nil)
 }
 
 func (r *Runner) runStep(ctx context.Context, session *claude.Session, step config.Step, data TemplateData) error {
@@ -194,7 +361,14 @@ func (r *Runner) runStep(ctx context.Context, session *claude.Session, step conf
 
 	switch strings.ToLower(step.Type) {
 	case config.StepTypeClaude:
-		prompt, err := render.String(step.Prompt, data)
+		if session == nil {
+			return fmt.Errorf("claude step %q requires a session", step.Name)
+		}
+
+		stepData := data
+		stepData.SessionID = session.ID
+
+		prompt, err := render.String(step.Prompt, stepData)
 		if err != nil {
 			return fmt.Errorf("render prompt: %w", err)
 		}
@@ -261,4 +435,44 @@ func (r *Runner) runStep(ctx context.Context, session *claude.Session, step conf
 
 func (r *Runner) shouldLogProgress() bool {
 	return r.cfg.DryRun || !r.agent.IsFullscreenTUI()
+}
+
+func (r *Runner) stepsForTask(task plan.Task) ([]config.Step, string, error) {
+	if len(r.cfg.Workflows) == 0 {
+		if len(r.cfg.Steps) == 0 {
+			return nil, "", fmt.Errorf("no steps configured")
+		}
+		return r.cfg.Steps, "default", nil
+	}
+
+	workflowName := strings.TrimSpace(task.Workflow)
+	if workflowName == "" {
+		workflowName = strings.TrimSpace(r.cfg.DefaultWorkflow)
+	}
+	if workflowName == "" && len(r.cfg.Workflows) == 1 {
+		for name := range r.cfg.Workflows {
+			workflowName = name
+		}
+	}
+	if workflowName == "" {
+		return nil, "", fmt.Errorf("task %q does not declare a workflow and no default_workflow is configured", task.ID)
+	}
+
+	workflow, ok := r.cfg.Workflows[workflowName]
+	if !ok {
+		return nil, "", fmt.Errorf("task %q references unknown workflow %q", task.ID, workflowName)
+	}
+	return workflow.Steps, workflowName, nil
+}
+
+func summarizeUnfinishedTasks(tasks []plan.Task) string {
+	if len(tasks) == 0 {
+		return "none"
+	}
+
+	parts := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		parts = append(parts, fmt.Sprintf("%s(%s)", task.ID, task.Status))
+	}
+	return strings.Join(parts, ", ")
 }

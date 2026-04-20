@@ -7,9 +7,10 @@ import (
 )
 
 const sampleConfig = `workspace: .
-todo_file: TODO.md
+plan_file: ghost-plan.yaml
 max_iterations: 0
 max_stalled_iterations: 2
+default_workflow: implement
 
 claude:
   command: claude
@@ -19,66 +20,134 @@ claude:
     - --permission-mode
     - bypassPermissions
 
-steps:
-  - name: execute-next-todo
-    type: claude
-    prompt: |
-      Execute the next incomplete TODO item from {{ .TodoFile }}.
-      The current item is:
-      {{ .NextTodo.Raw }}
+workflows:
+  implement:
+    steps:
+      - name: execute-task
+        type: claude
+        fresh_session: true
+        prompt: |
+          Execute task {{ .Task.ID }} from {{ .PlanFile }}.
+          Title: {{ .Task.Title }}
+          
+          Hard constraints to preserve:
+          {{- range .Plan.Project.ConstraintFiles }}
+          - {{ . }}
+          {{- end }}
+          {{- if .Task.Details }}
 
-      Make the necessary code changes in {{ .Workspace }}.
+          Details:
+          {{ .Task.Details }}
+          {{- end }}
+          {{- if .Task.ContextFiles }}
 
-  - name: check-coverage
-    type: claude
-    prompt: |
-      Check whether the new or changed code you just wrote has decent test coverage.
-      Run coverage-related test commands as needed.
-      If tests are missing or weak for the behavior you changed, add or improve them before moving on.
+          Relevant files:
+          {{- range .Task.ContextFiles }}
+          - {{ . }}
+          {{- end }}
+          {{- end }}
+          {{- if .Task.Acceptance }}
 
-  - name: run-tests
-    type: claude
-    prompt: |
-      Run the relevant automated tests for the code you just wrote or changed.
-      Fix any failures you find, then rerun the relevant tests until they pass.
+          Acceptance criteria:
+          {{- range .Task.Acceptance }}
+          - {{ . }}
+          {{- end }}
+          {{- end }}
 
-  - name: codex-review
-    type: claude
-    prompt: |
-      Ask Codex for a code review of the current diff and address any actionable feedback.
-      Use the local codex CLI if needed.
+          Make the necessary code changes in {{ .Workspace }}.
+          Consult additional repository files only when they are needed to complete this task correctly.
+          Do not edit {{ .PlanFile }} directly.
 
-  - name: mark-todo-done
-    type: claude
-    prompt: |
-      Edit {{ .TodoFile }} directly.
-      If this TODO item is fully complete, change this exact line from unchecked to checked:
-      {{ .NextTodo.Raw }}
+          Before you stop, write {{ .TaskResultPath }} as JSON with this schema:
+          {"status":"done|in_progress|blocked","notes":"brief summary"}
 
-      ghost-claude only proceeds to the next item when the first incomplete checkbox changes.
+          Set status to done only when the implementation work for this task is complete and ready for the configured automated verification commands.
+          Set status to in_progress when meaningful progress was made but more work is still required.
+          Set status to blocked when an external dependency, human decision, or missing prerequisite prevents completion.
+          Keep notes short and specific.
 
-      If it is not fully complete, leave it unchecked and explain why.
+      - name: codex-review
+        type: claude
+        fresh_session: true
+        prompt: |
+          If the current diff represents a non-trivial change, use /codex for a code review and address any actionable feedback.
+          If your review changes the task's completion state or remaining work, update {{ .TaskResultPath }} to keep the status and notes accurate.
+          Skip this step for trivial changes and leave {{ .TaskResultPath }} unchanged.
 
-  - name: commit-changes
-    type: claude
-    prompt: |
-      Stage and commit all changes from this iteration with git.
-      Write a clear, conventional commit message that summarizes what this TODO item accomplished:
-      {{ .NextTodo.Raw }}
+      - name: finalize-task
+        type: exec
+        command:
+          - "{{ .ExecutablePath }}"
+          - task
+          - finalize
+          - --workspace
+          - "{{ .Workspace }}"
+          - --plan
+          - "{{ .PlanFile }}"
+          - --task
+          - "{{ .Task.ID }}"
+          - --result
+          - "{{ .TaskResultPath }}"
+          - --message
+          - "{{- if .Task.CommitMessage -}}{{ .Task.CommitMessage }}{{- else -}}{{ .Task.Title }}{{- end -}}"
 
-      Include both the code changes and the {{ .TodoFile }} update in a single commit.
-      If there is nothing to commit, skip this step.
-`
+  checkpoint:
+    steps:
+      - name: run-checkpoint
+        type: claude
+        fresh_session: true
+        prompt: |
+          Execute the checkpoint task {{ .Task.ID }} from {{ .PlanFile }}.
+          Title: {{ .Task.Title }}
 
-const sampleTODO = `# TODO
+          Hard constraints to preserve:
+          {{- range .Plan.Project.ConstraintFiles }}
+          - {{ . }}
+          {{- end }}
+          {{- if .Task.Details }}
 
-- [ ] Replace this item with a real task.
-- [ ] Add another task.
+          Details:
+          {{ .Task.Details }}
+          {{- end }}
+          {{- if .Task.Acceptance }}
+
+          Acceptance criteria:
+          {{- range .Task.Acceptance }}
+          - {{ . }}
+          {{- end }}
+          {{- end }}
+
+          Run the full required verification for this checkpoint, fix any regressions you find, and leave the repository green before moving on.
+          Consult additional repository files only when they are needed to complete this checkpoint correctly.
+          Do not edit {{ .PlanFile }} directly.
+
+          Before you stop, write {{ .TaskResultPath }} as JSON with this schema:
+          {"status":"done|in_progress|blocked","notes":"brief summary"}
+
+          Set status to done only when the checkpoint work is complete and ready for the configured automated verification commands.
+          Set status to in_progress when meaningful progress was made but more work is still required.
+          Set status to blocked when an external dependency, human decision, or missing prerequisite prevents completion.
+          Keep notes short and specific.
+
+      - name: finalize-task
+        type: exec
+        command:
+          - "{{ .ExecutablePath }}"
+          - task
+          - finalize
+          - --workspace
+          - "{{ .Workspace }}"
+          - --plan
+          - "{{ .PlanFile }}"
+          - --task
+          - "{{ .Task.ID }}"
+          - --result
+          - "{{ .TaskResultPath }}"
+          - --message
+          - "{{- if .Task.CommitMessage -}}{{ .Task.CommitMessage }}{{- else -}}{{ .Task.Title }}{{- end -}}"
 `
 
 func Write(configPath string, force bool) error {
-	todoPath := filepath.Join(filepath.Dir(configPath), "TODO.md")
-
 	if !force {
 		if _, err := os.Stat(configPath); err == nil {
 			return fmt.Errorf("%s already exists; use -force to overwrite", configPath)
@@ -92,19 +161,6 @@ func Write(configPath string, force bool) error {
 	}
 	fmt.Printf("Wrote %s\n", configPath)
 
-	if !force {
-		if _, err := os.Stat(todoPath); err == nil {
-			fmt.Printf("Skipped %s (already exists)\n", todoPath)
-			return nil
-		} else if !os.IsNotExist(err) {
-			return err
-		}
-	}
-
-	if err := writeFile(todoPath, []byte(sampleTODO)); err != nil {
-		return err
-	}
-	fmt.Printf("Wrote %s\n", todoPath)
 	return nil
 }
 

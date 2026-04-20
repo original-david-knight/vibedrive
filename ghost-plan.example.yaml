@@ -1,0 +1,33 @@
+project:
+  name: example-project
+  objective: Ship the project end-to-end in this repository.
+  source_docs:
+    - TODO.md
+  constraint_files:
+    - TODO.md
+
+tasks:
+  - id: bootstrap
+    title: Replace this sample task with a real project task
+    workflow: implement
+    status: todo
+    details: >-
+      Describe the goal, relevant files, and any important constraints the agent
+      should keep in mind while implementing this task.
+    acceptance:
+      - Define concrete acceptance criteria here.
+    verify_commands:
+      - go test ./...
+    commit_message: feat: replace the sample bootstrap task
+
+  - id: checkpoint-1
+    title: Replace this sample checkpoint with a real verification gate
+    workflow: checkpoint
+    status: todo
+    deps:
+      - bootstrap
+    acceptance:
+      - Define the full-suite or milestone gate here.
+    verify_commands:
+      - go test ./...
+    commit_message: chore: record the first project checkpoint
