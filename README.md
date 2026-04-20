@@ -1,17 +1,19 @@
 # ghost-claude
 
-`ghost-claude` is a terminal-native Go runner that drives Claude Code through a configurable workflow. It supports two execution modes:
+`ghost-claude` is a terminal-native Go runner that drives Claude Code through a configurable workflow.
 
-- TODO mode: walk the first unchecked item in `TODO.md`
-- plan mode: execute tasks from a machine-readable `ghost-plan.yaml`
+Its primary execution queue is `ghost-plan.yaml`: a machine-readable task graph that the runner reads, updates, and advances automatically.
+
+Legacy TODO mode still exists for compatibility, but the current scaffolded flow does not step through `TODO.md` unless you intentionally omit `plan_file` and configure checklist-based steps.
 
 It launches Claude's real fullscreen TUI inside a PTY, types prompts as terminal input, and waits for Claude to return to idle before sending the next step. Each work item gets a fresh Claude session, and individual Claude steps can opt into their own fresh sessions too.
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.26+ (the version declared in `go.mod` is currently `1.26.0`)
 - The `claude` CLI installed and on your `$PATH` ([Claude Code](https://docs.claude.com/en/docs/claude-code))
-- Either a `TODO.md` file with GitHub-style checkboxes or a `ghost-plan.yaml` file with machine-readable tasks
+- A `ghost-plan.yaml` file with machine-readable tasks for normal operation
+- Optionally, a `TODO.md` file with GitHub-style checkboxes if you intentionally want legacy checklist mode or want to use it as a planning input
 
 ## Install
 
@@ -30,7 +32,7 @@ go run ./cmd/ghost-claude <subcommand>
 From inside the repo you want ghost-claude to work on:
 
 ```bash
-ghost-claude init              # writes ghost-claude.yaml, uses all regular files in the workspace dir as source, then asks Claude to generate ghost-plan.yaml and review it with Codex
+ghost-claude init              # writes ghost-claude.yaml, uses all top-level regular files in the workspace dir as source, then asks Claude to generate ghost-plan.yaml and review it with Codex
 ghost-claude init DESIGN.md    # or point init at a specific source file or directory
 ghost-claude run    # starts the loop
 ```
@@ -48,13 +50,15 @@ Preview what would happen without touching anything:
 ghost-claude run --dry-run
 ```
 
+`ghost-claude init` bootstraps plan mode. The generated config points the runner at `ghost-plan.yaml`, not at `TODO.md`.
+
 ## How the loop works
 
 For each iteration:
 
 1. Select the next work item.
-   In TODO mode this is the first unchecked `- [ ]` item in `TODO.md`.
-   In plan mode this is the first ready task in `ghost-plan.yaml`, with `in_progress` tasks preferred over `todo` tasks and dependencies respected.
+   In the default and current flow, this is the first ready task in `ghost-plan.yaml`, with `in_progress` tasks preferred over `todo` tasks and dependencies respected.
+   Legacy TODO mode instead uses the first unchecked `- [ ]` item in `TODO.md`.
 2. Start a fresh Claude session when a Claude step needs one.
 3. Run every configured step in order. By default Claude steps share one session for the work item, but `fresh_session: true` isolates a step in its own Claude session.
 4. Close any Claude sessions that were opened.
@@ -62,7 +66,7 @@ For each iteration:
 
 The runner stops when there is no work left, when `max_iterations` is reached, or when the same item stalls `max_stalled_iterations` times in a row.
 
-The default workflow scaffolded by `ghost-claude init` is plan-oriented:
+The default workflow scaffolded by `ghost-claude init` is plan-oriented and uses `ghost-plan.yaml` as the execution queue:
 
 1. Execute the selected task in a fresh Claude session while preserving the plan's hard constraints.
 2. Ask Codex for a review on non-trivial diffs in a separate fresh Claude session.
@@ -86,9 +90,11 @@ If you omit the subcommand, `ghost-claude` behaves like `run`.
 
 When `-workspace` is set, the default config path becomes `<workspace>/ghost-claude.yaml` and every relative path in the config resolves against that workspace.
 
+In the generated config, `plan_file` is set, so `run` executes from `ghost-plan.yaml`. It does not read `TODO.md` as the task queue unless you reconfigure it into legacy TODO mode.
+
 ## Config
 
-The runner reads `ghost-claude.yaml` by default. Recommended plan-mode example:
+The runner reads `ghost-claude.yaml` by default. `ghost-claude init` writes a complete scaffold matching [`ghost-claude.example.yaml`](ghost-claude.example.yaml). Shortened plan-mode example:
 
 ```yaml
 workspace: .
@@ -113,10 +119,19 @@ workflows:
         type: claude
         fresh_session: true
         prompt: |
-          Execute task {{ .Task.ID }} from {{ .PlanFile }} while preserving:
+          Execute task {{ .Task.ID }} from {{ .PlanFile }}.
+          Title: {{ .Task.Title }}
+
+          Hard constraints to preserve:
           {{- range .Plan.Project.ConstraintFiles }}
           - {{ . }}
           {{- end }}
+
+      - name: codex-review
+        type: claude
+        fresh_session: true
+        prompt: |
+          If the current diff represents a non-trivial change, use /codex for a code review and address any actionable feedback.
 
       - name: finalize-task
         type: exec
@@ -132,13 +147,15 @@ workflows:
           - "{{ .Task.ID }}"
           - --result
           - "{{ .TaskResultPath }}"
+          - --message
+          - "{{- if .Task.CommitMessage -}}{{ .Task.CommitMessage }}{{- else -}}{{ .Task.Title }}{{- end -}}"
 ```
 
-Legacy TODO mode still works: omit `plan_file` and `workflows`, keep `steps`, and drive progress by editing the first unchecked checkbox in `TODO.md`.
+Legacy TODO mode still works, but it is no longer the default or recommended flow: omit `plan_file` and `workflows`, keep `steps`, and drive progress by editing the first unchecked checkbox in `TODO.md`.
 
 ### `ghost-plan.yaml`
 
-Plan mode uses a machine-readable task file. Minimal example:
+Plan mode uses a machine-readable task file. The repository ships a complete starter in [`ghost-plan.example.yaml`](ghost-plan.example.yaml). Minimal example:
 
 ```yaml
 project:
@@ -155,11 +172,15 @@ tasks:
     title: Scaffold the repo and get `go build ./...` green
     workflow: implement
     status: todo
+    details: Set up the initial layout and keep the repo buildable after each change.
+    context_files:
+      - DESIGN.md
     acceptance:
       - `go build ./...` succeeds
       - fast test script exists and runs
     verify_commands:
       - go build ./...
+    commit_message: feat: scaffold the repository
 
   - id: scaffold-checkpoint
     title: Run the first full-suite checkpoint and fix regressions
@@ -174,15 +195,52 @@ tasks:
 The intended use is:
 
 - `ghost-plan.yaml` is machine-owned execution state
+- the runner normally advances by updating task status and notes in `ghost-plan.yaml`, not by checking boxes in `TODO.md`
 - `TODO.md` is still useful when you want legacy checklist mode or want to keep one constraints doc
 - `ghost-claude init` can generate the initial plan from a TODO file, a design doc, or a directory of source files
 - your external planner can still generate both files if you prefer that flow
+
+### Project fields
+
+| Field              | Meaning                                                                 |
+| ------------------ | ----------------------------------------------------------------------- |
+| `name`             | Short project name.                                                     |
+| `objective`        | One-sentence statement of what the repository is trying to ship.        |
+| `source_docs`      | Requirements/design inputs the plan was derived from.                   |
+| `constraint_files` | Subset of source docs that define hard requirements, gates, or limits.  |
+
+### Task fields
+
+| Field             | Meaning                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `id`              | Required stable task ID. Dependencies refer to this value.                              |
+| `title`           | Required short human-readable task title.                                               |
+| `details`         | Optional implementation notes or extra context.                                         |
+| `status`          | Required execution state. See supported values below.                                   |
+| `workflow`        | Optional workflow name from `ghost-claude.yaml`. Falls back to `default_workflow`.      |
+| `kind`            | Optional planner metadata. Stored in the plan, but not interpreted by the runner today. |
+| `deps`            | Optional list of task IDs that must be `done` before this task is ready.                |
+| `context_files`   | Optional repo-relative files the task should pay attention to.                          |
+| `acceptance`      | Optional acceptance criteria for the task.                                              |
+| `verify_commands` | Optional shell commands run by `task finalize` before a `done` task stays `done`.       |
+| `commit_message`  | Optional commit message used by the default finalizer workflow.                          |
+| `notes`           | Optional execution notes. Plan-mode progress is tracked from `status` plus `notes`.     |
+
+### Task statuses
+
+| Status         | Meaning                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| `todo`         | Not started yet. Eligible once all dependencies are `done`.                                 |
+| `in_progress`  | Partially complete. Ready tasks in this state are selected before `todo` tasks.             |
+| `blocked`      | Terminal state for work that cannot continue without an external dependency or decision.     |
+| `done`         | Terminal state for completed work.                                                           |
+| `manual`       | Terminal state for manual or human-owned work. Supported by the finalizer and custom flows. |
 
 ### Top-level fields
 
 | Field                    | Default       | Meaning                                                            |
 | ------------------------ | ------------- | ------------------------------------------------------------------ |
-| `workspace`              | `.`           | Directory Claude runs in. Relative paths resolve from the config.  |
+| `workspace`              | `.`           | Directory Claude and exec steps run in. Relative `todo_file` and `plan_file` resolve under it. |
 | `todo_file`              | `TODO.md`     | Legacy checklist file. Also useful as a constraints source.        |
 | `plan_file`              | unset         | Machine-readable task file for plan mode.                          |
 | `max_iterations`         | `0`           | Hard cap on iterations. `0` means unlimited.                       |
@@ -243,12 +301,17 @@ Prompts, `command`, `working_dir`, and `env` values are rendered with Go's `text
 ## Notes & gotchas
 
 - In TODO mode, the runner only advances when the first incomplete checkbox in the TODO file changes.
-- In plan mode, the runner only advances when the selected task changes status or notes in `ghost-plan.yaml`.
+- In the normal plan-based flow, the runner advances when the selected task changes status or notes in `ghost-plan.yaml`.
+- The generated config from `ghost-claude init` runs in plan mode, so `TODO.md` is not the live execution queue unless you deliberately switch back to legacy TODO mode.
 - `ghost-plan.yaml` is intended to be machine-owned state. The default workflow updates it through `ghost-claude task finalize`.
+- `ghost-claude task finalize` accepts `done`, `in_progress`, `blocked`, and `manual` task results. The scaffolded prompts only instruct Claude to emit the first three.
 - `verify_commands` lets plan tasks declare deterministic checks for the exec finalizer to run before a task can stay `done`.
+- If a task result says `done` and a `verify_commands` command fails, the finalizer rewrites the task to `in_progress`, appends a verification-failure note, removes the result file, and returns an error without committing.
+- The finalizer stages changes with `git add -A` and only creates a commit when something is actually staged.
 - Review prompts can assume Claude has a `/codex` command available and can use it for code or plan review.
 - `ghost-claude init` uses the configured Claude transport. With the default `tui` transport, you can watch Claude generate and review the plan live in your terminal.
 - In TUI mode, YAML multiline prompts are flattened into one submitted message, because real newlines would be interpreted as separate messages by Claude's composer.
 - In a fresh workspace, the runner auto-confirms Claude's trust dialog so the loop can start unattended.
 - TUI automation detects "Claude is idle" from terminal-title transitions. If a future Claude release changes that behavior, the detector may need updating.
 - `type: exec` lets you move deterministic steps (linters, formatters, arbitrary shell) out of Claude when that becomes cleaner.
+- Plan string-list fields such as `acceptance`, `verify_commands`, and `context_files` must be YAML lists. Quote list items that contain `:` followed by a space.
