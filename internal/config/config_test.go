@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -24,7 +25,7 @@ func TestLoadAddsMaxEffortWhenClaudeArgsOmitted(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	want := []string{"--effort", "max"}
+	want := []string{"--effort", "max", "--permission-mode", "bypassPermissions"}
 	if !slices.Equal(cfg.Claude.Args, want) {
 		t.Fatalf("expected default claude args %v, got %v", want, cfg.Claude.Args)
 	}
@@ -78,13 +79,39 @@ steps:
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	want := []string{"--effort", "high"}
+	want := []string{"--effort", "high", "--permission-mode", "bypassPermissions"}
 	if !slices.Equal(cfg.Claude.Args, want) {
 		t.Fatalf("expected claude args %v, got %v", want, cfg.Claude.Args)
 	}
 }
 
-func TestLoadSetsDefaultCodexExecArgs(t *testing.T) {
+func TestLoadPreservesExplicitClaudePermissionFlag(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "ghost-claude.yaml")
+
+	content := `claude:
+  args:
+    - --dangerously-skip-permissions
+steps:
+  - name: inspect
+    prompt: inspect
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	want := []string{"--dangerously-skip-permissions", "--effort", "max"}
+	if !slices.Equal(cfg.Claude.Args, want) {
+		t.Fatalf("expected claude args %v, got %v", want, cfg.Claude.Args)
+	}
+}
+
+func TestLoadSetsDefaultCodexTUIArgs(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "ghost-claude.yaml")
 
@@ -102,7 +129,14 @@ func TestLoadSetsDefaultCodexExecArgs(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	want := []string{"--dangerously-bypass-approvals-and-sandbox", "exec", "-c", `model_reasoning_effort="xhigh"`}
+	if cfg.Codex.Transport != CodexTransportTUI {
+		t.Fatalf("expected codex transport %q, got %q", CodexTransportTUI, cfg.Codex.Transport)
+	}
+	if cfg.Codex.StartupTimeout != defaultStartupTimeout {
+		t.Fatalf("expected codex startup timeout %q, got %q", defaultStartupTimeout, cfg.Codex.StartupTimeout)
+	}
+
+	want := []string{"--dangerously-bypass-approvals-and-sandbox", "-c", `model_reasoning_effort="xhigh"`}
 	if !slices.Equal(cfg.Codex.Args, want) {
 		t.Fatalf("expected codex args %v, got %v", want, cfg.Codex.Args)
 	}
@@ -128,6 +162,10 @@ steps:
 	cfg, err := Load(configPath)
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Codex.Transport != CodexTransportExec {
+		t.Fatalf("expected codex transport %q, got %q", CodexTransportExec, cfg.Codex.Transport)
 	}
 
 	want := []string{"--dangerously-bypass-approvals-and-sandbox", "review", "--uncommitted", "-c", `model_reasoning_effort="xhigh"`}
@@ -157,6 +195,10 @@ steps:
 	cfg, err := Load(configPath)
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Codex.Transport != CodexTransportExec {
+		t.Fatalf("expected codex transport %q, got %q", CodexTransportExec, cfg.Codex.Transport)
 	}
 
 	want := []string{"--dangerously-bypass-approvals-and-sandbox", "exec", "-c", `model_reasoning_effort="high"`}
@@ -191,9 +233,39 @@ steps:
 		t.Fatalf("Load returned error: %v", err)
 	}
 
+	if cfg.Codex.Transport != CodexTransportExec {
+		t.Fatalf("expected codex transport %q, got %q", CodexTransportExec, cfg.Codex.Transport)
+	}
+
 	want := []string{"--dangerously-bypass-approvals-and-sandbox", "exec", "-c", `model_reasoning_effort="xhigh"`}
 	if !slices.Equal(cfg.Codex.Args, want) {
 		t.Fatalf("expected codex args %v, got %v", want, cfg.Codex.Args)
+	}
+}
+
+func TestLoadRejectsExecSubcommandForCodexTUITransport(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "ghost-claude.yaml")
+
+	content := `codex:
+  transport: tui
+  args:
+    - exec
+steps:
+  - name: inspect
+    type: codex
+    prompt: inspect
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	_, err := Load(configPath)
+	if err == nil {
+		t.Fatal("expected Load to reject exec subcommand for codex tui transport")
+	}
+	if !strings.Contains(err.Error(), `codex.transport "tui" does not support subcommand "exec"`) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

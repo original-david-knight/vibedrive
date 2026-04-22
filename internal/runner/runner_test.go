@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -8,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"ghost_claude/internal/automation"
 	"ghost_claude/internal/claude"
+	codexcli "ghost_claude/internal/codex"
 	"ghost_claude/internal/config"
 	"ghost_claude/internal/plan"
 )
@@ -25,6 +28,9 @@ func (f *fakeAgent) RunPrompt(_ context.Context, session *claude.Session, prompt
 	f.prompts = append(f.prompts, prompt)
 	f.sessionIDs = append(f.sessionIDs, session.ID)
 
+	if strings.HasPrefix(prompt, "write ") {
+		return writeOutput(strings.TrimPrefix(prompt, "write "))
+	}
 	if strings.HasPrefix(prompt, "mark ") {
 		return markFirstIncompleteTodoDone(f.todoPath)
 	}
@@ -50,14 +56,18 @@ func (f *fakeAgent) IsFullscreenTUI() bool {
 }
 
 type fakeCodex struct {
-	prompts  []string
-	todoPath string
-	planPath string
+	prompts         []string
+	closedSessionID []string
+	todoPath        string
+	planPath        string
 }
 
-func (f *fakeCodex) RunPrompt(_ context.Context, prompt string) error {
+func (f *fakeCodex) RunPrompt(_ context.Context, session *codexcli.Session, prompt string) error {
 	f.prompts = append(f.prompts, prompt)
 
+	if strings.HasPrefix(prompt, "write ") {
+		return writeOutput(strings.TrimPrefix(prompt, "write "))
+	}
 	if strings.HasPrefix(prompt, "mark ") {
 		return markFirstIncompleteTodoDone(f.todoPath)
 	}
@@ -71,6 +81,15 @@ func (f *fakeCodex) RunPrompt(_ context.Context, prompt string) error {
 	}
 
 	return nil
+}
+
+func (f *fakeCodex) Close(_ *codexcli.Session) error {
+	f.closedSessionID = append(f.closedSessionID, "closed")
+	return nil
+}
+
+func (f *fakeCodex) IsFullscreenTUI() bool {
+	return false
 }
 
 func TestRunCreatesFreshClaudeSessionPerTodo(t *testing.T) {
@@ -457,6 +476,156 @@ tasks:
 	}
 }
 
+func TestRunStepLogsCodexPromptPreview(t *testing.T) {
+	dir := t.TempDir()
+	var stdout bytes.Buffer
+
+	r := &Runner{
+		cfg: &config.Config{
+			Workspace: dir,
+		},
+		stdout: &stdout,
+		stderr: io.Discard,
+		codex:  &fakeCodex{},
+	}
+
+	err := r.runStep(context.Background(), nil, nil, config.Step{
+		Name:   "review",
+		Type:   config.StepTypeCodex,
+		Prompt: "review {{ .Task.ID }}\ncheck acceptance criteria",
+	}, TemplateData{
+		Task: plan.Task{ID: "scaffold"},
+	})
+	if err != nil {
+		t.Fatalf("runStep returned error: %v", err)
+	}
+
+	got := stdout.String()
+	if !strings.Contains(got, "\n--> codex step: review\n") {
+		t.Fatalf("expected codex step header, got %q", got)
+	}
+	if !strings.Contains(got, "    review scaffold\n") {
+		t.Fatalf("expected first prompt line in preview, got %q", got)
+	}
+	if !strings.Contains(got, "    check acceptance criteria\n") {
+		t.Fatalf("expected second prompt line in preview, got %q", got)
+	}
+}
+
+func TestRunPreparesPlanArtifactDirectories(t *testing.T) {
+	dir := t.TempDir()
+	planPath := filepath.Join(dir, "ghost-plan.yaml")
+
+	content := `project:
+  name: demo
+tasks:
+  - id: scaffold
+    title: Scaffold repo
+    workflow: implement
+    status: todo
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	cfg := &config.Config{
+		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Workspace:            dir,
+		PlanFile:             planPath,
+		Coder:                config.AgentCodex,
+		Reviewer:             config.AgentCodex,
+		MaxStalledIterations: 1,
+		DefaultWorkflow:      "implement",
+		Workflows: map[string]config.Workflow{
+			"implement": {
+				Steps: []config.Step{
+					{Name: "review", Type: config.StepTypeAgent, Actor: config.StepActorReviewer, Prompt: "write {{ .ReviewPath }}"},
+					{Name: "finish", Type: config.StepTypeAgent, Actor: config.StepActorCoder, Prompt: "finish task {{ .Task.ID }}"},
+				},
+			},
+		},
+	}
+
+	codexAgent := &fakeCodex{planPath: planPath}
+
+	r := &Runner{
+		cfg:    cfg,
+		stdout: io.Discard,
+		stderr: io.Discard,
+		codex:  codexAgent,
+	}
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	reviewPath := automation.ReviewPath(dir, "scaffold")
+	if _, err := os.Stat(reviewPath); err != nil {
+		t.Fatalf("expected review artifact %s to exist, stat err=%v", reviewPath, err)
+	}
+}
+
+func TestRunFailsWhenRequiredOutputMissing(t *testing.T) {
+	dir := t.TempDir()
+	planPath := filepath.Join(dir, "ghost-plan.yaml")
+
+	content := `project:
+  name: demo
+tasks:
+  - id: scaffold
+    title: Scaffold repo
+    workflow: implement
+    status: todo
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	cfg := &config.Config{
+		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Workspace:            dir,
+		PlanFile:             planPath,
+		Coder:                config.AgentCodex,
+		Reviewer:             config.AgentCodex,
+		MaxStalledIterations: 1,
+		DefaultWorkflow:      "implement",
+		Workflows: map[string]config.Workflow{
+			"implement": {
+				Steps: []config.Step{
+					{
+						Name:            "review",
+						Type:            config.StepTypeAgent,
+						Actor:           config.StepActorReviewer,
+						Prompt:          "review {{ .Task.ID }}",
+						RequiredOutputs: []string{"{{ .ReviewPath }}"},
+					},
+					{Name: "finish", Type: config.StepTypeAgent, Actor: config.StepActorCoder, Prompt: "finish task {{ .Task.ID }}"},
+				},
+			},
+		},
+	}
+
+	codexAgent := &fakeCodex{planPath: planPath}
+
+	r := &Runner{
+		cfg:    cfg,
+		stdout: io.Discard,
+		stderr: io.Discard,
+		codex:  codexAgent,
+	}
+
+	err := r.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected Run to fail when a step does not create its required output")
+	}
+	if !strings.Contains(err.Error(), `step "review" failed: step "review" did not produce required output`) {
+		t.Fatalf("expected missing required output error, got %q", err)
+	}
+	if got := strings.Join(codexAgent.prompts, "\n"); got != "review scaffold" {
+		t.Fatalf("expected runner to stop before later steps, got prompts:\n%s", got)
+	}
+}
+
 func TestRunDispatchesCoderAndReviewerStepsWithClaudeReviewer(t *testing.T) {
 	dir := t.TempDir()
 	planPath := filepath.Join(dir, "ghost-plan.yaml")
@@ -757,4 +926,8 @@ func updateTask(path, taskID, status, notes string) error {
 	}
 
 	return os.ErrNotExist
+}
+
+func writeOutput(path string) error {
+	return os.WriteFile(path, []byte("{}\n"), 0o644)
 }

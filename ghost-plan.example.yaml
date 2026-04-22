@@ -16,6 +16,7 @@ tasks:
       should keep in mind while implementing this task.
     acceptance:
       - Define concrete acceptance criteria here.
+      - Leave task notes describing what was learned in this phase and what should change if the plan is rerun from a fresh environment.
     verify_commands:
       - go test ./...
     commit_message: feat: replace the sample bootstrap task
@@ -28,6 +29,7 @@ tasks:
       - bootstrap
     acceptance:
       - Define the full-suite or milestone gate here.
+      - Leave task notes describing what was learned in this phase and what should change if the plan is rerun from a fresh environment.
     verify_commands:
       - go test ./...
     commit_message: chore: record the first project checkpoint

@@ -160,6 +160,7 @@ Requirements for the plan:
 - do not silently drop manual, machine-specific, or external-dependency work; represent it in tasks/details so the execution plan remains faithful to the source requirements
 - include explicit checkpoint tasks wherever the requirements call for them
 - include tasks that keep testing and verification work attached to implementation instead of deferring all tests to the end
+- for every task, make the last acceptance item instruct the coding agent to leave short notes about what it learned in that phase, including discoveries or plan adjustments that matter if the project is re-planned and rerun in a fresh environment
 - include verify_commands for each task whenever there is a concrete automated check or test command that should run before the task can be considered done
 - quote any string list item that contains a colon followed by a space so the YAML stays valid
 
@@ -182,6 +183,7 @@ Perform a critical review of the plan. Focus on:
 - incorrect or weak task decomposition
 - missing checkpoints or verification work
 - missing or weak automated verification commands
+- tasks that do not end by capturing phase learnings for future replanning and fresh reruns
 - bad dependency ordering
 - tasks that are too large, too vague, or not committable
 - requirements from the listed source inputs that were omitted or weakened

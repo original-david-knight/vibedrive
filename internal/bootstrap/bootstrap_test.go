@@ -58,6 +58,9 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 	if !strings.Contains(client.prompts[0], "Create ghost-plan.yaml") {
 		t.Fatalf("expected first prompt to create the plan file, got %q", client.prompts[0])
 	}
+	if !strings.Contains(client.prompts[0], "what it learned in that phase") {
+		t.Fatalf("expected first prompt to require per-task phase notes, got %q", client.prompts[0])
+	}
 	if strings.Contains(client.prompts[0], "Replace the file if it already exists.") {
 		t.Fatalf("expected first prompt to omit replace instructions, got %q", client.prompts[0])
 	}
@@ -69,6 +72,9 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 	}
 	if !strings.Contains(client.prompts[1], "Perform a critical review of the plan") {
 		t.Fatalf("expected second prompt to request a critical plan review, got %q", client.prompts[1])
+	}
+	if !strings.Contains(client.prompts[1], "capturing phase learnings") {
+		t.Fatalf("expected second prompt to review note-capture coverage, got %q", client.prompts[1])
 	}
 	if strings.Contains(client.prompts[1], "/codex") {
 		t.Fatalf("expected second prompt to stop requiring /codex, got %q", client.prompts[1])

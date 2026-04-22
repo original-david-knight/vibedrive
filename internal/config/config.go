@@ -17,11 +17,15 @@ const (
 
 	ClaudeTransportPrint = "print"
 	ClaudeTransportTUI   = "tui"
+	CodexTransportExec   = "exec"
+	CodexTransportTUI    = "tui"
 
 	SessionStrategySessionID = "session_id"
 	SessionStrategyContinue  = "continue"
 
 	defaultClaudeEffort         = "max"
+	defaultClaudePermissionMode = "bypassPermissions"
+	defaultStartupTimeout       = "30s"
 	defaultCodexReasoningEffort = "xhigh"
 	defaultCodexBypassFlag      = "--dangerously-bypass-approvals-and-sandbox"
 
@@ -59,8 +63,10 @@ type ClaudeConfig struct {
 }
 
 type CodexConfig struct {
-	Command string   `yaml:"command"`
-	Args    []string `yaml:"args"`
+	Command        string   `yaml:"command"`
+	Args           []string `yaml:"args"`
+	Transport      string   `yaml:"transport"`
+	StartupTimeout string   `yaml:"startup_timeout"`
 }
 
 type Step struct {
@@ -71,6 +77,7 @@ type Step struct {
 	Command         []string          `yaml:"command"`
 	WorkingDir      string            `yaml:"working_dir"`
 	Env             map[string]string `yaml:"env"`
+	RequiredOutputs []string          `yaml:"required_outputs"`
 	FreshSession    bool              `yaml:"fresh_session"`
 	Timeout         string            `yaml:"timeout"`
 	ContinueOnError bool              `yaml:"continue_on_error"`
@@ -130,7 +137,7 @@ func Load(path string) (*Config, error) {
 		cfg.Claude.Transport = ClaudeTransportTUI
 	}
 	if cfg.Claude.StartupTimeout == "" {
-		cfg.Claude.StartupTimeout = "30s"
+		cfg.Claude.StartupTimeout = defaultStartupTimeout
 	}
 	if cfg.Claude.SessionStrategy == "" {
 		cfg.Claude.SessionStrategy = SessionStrategySessionID
@@ -140,7 +147,13 @@ func Load(path string) (*Config, error) {
 	if cfg.Codex.Command == "" {
 		cfg.Codex.Command = "codex"
 	}
-	cfg.Codex.Args = ensureDefaultCodexArgs(cfg.Codex.Args)
+	if cfg.Codex.Transport == "" {
+		cfg.Codex.Transport = defaultCodexTransport(cfg.Codex.Args)
+	}
+	if cfg.Codex.StartupTimeout == "" {
+		cfg.Codex.StartupTimeout = defaultStartupTimeout
+	}
+	cfg.Codex.Args = ensureDefaultCodexArgs(cfg.Codex.Args, cfg.Codex.Transport)
 
 	for i := range cfg.Steps {
 		if cfg.Steps[i].Type == "" {
@@ -194,6 +207,21 @@ func (c *Config) Validate() error {
 	case "", SessionStrategySessionID, SessionStrategyContinue:
 	default:
 		return fmt.Errorf("unsupported claude.session_strategy %q", c.Claude.SessionStrategy)
+	}
+
+	codexTransport := normalize(c.Codex.Transport)
+	if codexTransport == "" {
+		codexTransport = defaultCodexTransport(c.Codex.Args)
+	}
+
+	switch codexTransport {
+	case CodexTransportExec, CodexTransportTUI:
+	default:
+		return fmt.Errorf("unsupported codex.transport %q", c.Codex.Transport)
+	}
+
+	if err := validateCodexArgs(codexTransport, c.Codex.Args); err != nil {
+		return err
 	}
 
 	if len(c.Steps) == 0 && len(c.Workflows) == 0 {
@@ -251,12 +279,13 @@ func defaultConfig() Config {
 			Command:         "claude",
 			Args:            []string{"--effort", defaultClaudeEffort},
 			Transport:       ClaudeTransportTUI,
-			StartupTimeout:  "30s",
+			StartupTimeout:  defaultStartupTimeout,
 			SessionStrategy: SessionStrategySessionID,
 		},
 		Codex: CodexConfig{
-			Command: "codex",
-			Args:    defaultCodexArgs(),
+			Command:        "codex",
+			StartupTimeout: defaultStartupTimeout,
+			Args:           defaultCodexArgs(CodexTransportTUI),
 		},
 	}
 }
@@ -287,18 +316,19 @@ func (c *Config) ReviewerAgent() string {
 }
 
 func ensureDefaultClaudeArgs(args []string) []string {
-	if hasClaudeEffortArg(args) {
-		return append([]string{}, args...)
-	}
-
 	withDefault := append([]string{}, args...)
-	withDefault = append(withDefault, "--effort", defaultClaudeEffort)
+	if !hasClaudeEffortArg(withDefault) {
+		withDefault = append(withDefault, "--effort", defaultClaudeEffort)
+	}
+	if !hasClaudePermissionArg(withDefault) {
+		withDefault = append(withDefault, "--permission-mode", defaultClaudePermissionMode)
+	}
 	return withDefault
 }
 
-func ensureDefaultCodexArgs(args []string) []string {
+func ensureDefaultCodexArgs(args []string, transport string) []string {
 	if len(args) == 0 {
-		return defaultCodexArgs()
+		return defaultCodexArgs(transport)
 	}
 
 	withDefault := ensureCodexYOLOArgs(args)
@@ -309,12 +339,20 @@ func ensureDefaultCodexArgs(args []string) []string {
 	return withDefault
 }
 
-func defaultCodexArgs() []string {
-	return []string{
-		defaultCodexBypassFlag,
-		"exec",
-		"-c",
-		defaultCodexReasoningConfig(),
+func defaultCodexArgs(transport string) []string {
+	args := []string{defaultCodexBypassFlag}
+	if normalize(transport) == CodexTransportExec {
+		args = append(args, "exec")
+	}
+	return append(args, "-c", defaultCodexReasoningConfig())
+}
+
+func defaultCodexTransport(args []string) string {
+	switch codexSubcommand(args) {
+	case "", "resume", "fork":
+		return CodexTransportTUI
+	default:
+		return CodexTransportExec
 	}
 }
 
@@ -328,9 +366,32 @@ func defaultCodexReasoningConfig() string {
 	return fmt.Sprintf(`model_reasoning_effort=%q`, defaultCodexReasoningEffort)
 }
 
+func codexSubcommand(args []string) string {
+	for _, arg := range args {
+		switch arg {
+		case "exec", "review", "login", "logout", "mcp", "plugin", "mcp-server", "app-server", "completion", "sandbox", "debug", "apply", "resume", "fork", "cloud", "exec-server", "features", "help":
+			return arg
+		}
+	}
+	return ""
+}
+
 func hasClaudeEffortArg(args []string) bool {
 	for _, arg := range args {
 		if arg == "--effort" || strings.HasPrefix(arg, "--effort=") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasClaudePermissionArg(args []string) bool {
+	for _, arg := range args {
+		switch {
+		case arg == "--permission-mode",
+			strings.HasPrefix(arg, "--permission-mode="),
+			arg == "--dangerously-skip-permissions",
+			arg == "--allow-dangerously-skip-permissions":
 			return true
 		}
 	}
@@ -375,6 +436,27 @@ func stripCodexPermissionArgs(args []string) []string {
 	}
 
 	return stripped
+}
+
+func validateCodexArgs(transport string, args []string) error {
+	switch normalize(transport) {
+	case CodexTransportTUI:
+		switch codexSubcommand(args) {
+		case "", "resume", "fork":
+			return nil
+		default:
+			return fmt.Errorf("codex.transport %q does not support subcommand %q", transport, codexSubcommand(args))
+		}
+	case CodexTransportExec:
+		switch codexSubcommand(args) {
+		case "exec", "review":
+			return nil
+		default:
+			return fmt.Errorf("codex.transport %q requires a non-interactive subcommand such as exec or review", transport)
+		}
+	default:
+		return fmt.Errorf("unsupported codex.transport %q", transport)
+	}
 }
 
 func validateStep(path string, step Step) error {

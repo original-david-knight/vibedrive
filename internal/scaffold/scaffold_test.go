@@ -48,6 +48,12 @@ func TestWritePreservesExistingTODO(t *testing.T) {
 	if !strings.Contains(string(configContent), "{{ .ReviewPath }}") {
 		t.Fatalf("expected scaffolded config to use the review artifact path, got %q", string(configContent))
 	}
+	if !strings.Contains(string(configContent), "required_outputs:") || !strings.Contains(string(configContent), "{{ .TaskResultPath }}") {
+		t.Fatalf("expected scaffolded config to declare required outputs for task artifacts, got %q", string(configContent))
+	}
+	if !strings.Contains(string(configContent), "what was learned in this phase") {
+		t.Fatalf("expected scaffolded config to request phase-learnings notes, got %q", string(configContent))
+	}
 	if strings.Contains(string(configContent), "fresh_session: true") {
 		t.Fatalf("expected scaffolded config to avoid extra Claude sessions in the default workflow, got %q", string(configContent))
 	}
@@ -120,6 +126,12 @@ func TestWriteOverwritesWhenForceIsSet(t *testing.T) {
 	}
 	if !strings.Contains(string(configContent), "address-peer-review") {
 		t.Fatalf("expected scaffolded config to hand peer-review findings back to the coder, got %q", string(configContent))
+	}
+	if !strings.Contains(string(configContent), "required_outputs:") || !strings.Contains(string(configContent), "{{ .TaskResultPath }}") {
+		t.Fatalf("expected scaffolded config to declare required outputs for task artifacts, got %q", string(configContent))
+	}
+	if !strings.Contains(string(configContent), "what was learned in this phase") {
+		t.Fatalf("expected scaffolded config to request phase-learnings notes, got %q", string(configContent))
 	}
 	if strings.Contains(string(configContent), "\ncoder:") || strings.Contains(string(configContent), "\nreviewer:") {
 		t.Fatalf("expected scaffolded config to leave runtime role selection to CLI flags, got %q", string(configContent))

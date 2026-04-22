@@ -120,9 +120,10 @@ claude:
 
 codex:
   command: codex
+  transport: tui
+  startup_timeout: 30s
   args:
     - --dangerously-bypass-approvals-and-sandbox
-    - exec
     - -c
     - model_reasoning_effort="xhigh"
 
@@ -140,18 +141,24 @@ workflows:
           {{- range .Plan.Project.ConstraintFiles }}
           - {{ . }}
           {{- end }}
+        required_outputs:
+          - "{{ .TaskResultPath }}"
 
       - name: peer-review
         type: agent
         actor: reviewer
         prompt: |
           Review the current uncommitted changes for task {{ .Task.ID }} from {{ .PlanFile }}.
+        required_outputs:
+          - "{{ .ReviewPath }}"
 
       - name: address-peer-review
         type: agent
         actor: coder
         prompt: |
           Read the peer review artifact at {{ .ReviewPath }} for task {{ .Task.ID }} from {{ .PlanFile }}.
+        required_outputs:
+          - "{{ .TaskResultPath }}"
 
       - name: finalize-task
         type: exec
@@ -198,6 +205,7 @@ tasks:
     acceptance:
       - `go build ./...` succeeds
       - fast test script exists and runs
+      - task notes capture what was learned in this phase and any replanning input for a fresh rerun
     verify_commands:
       - go build ./...
     commit_message: feat: scaffold the repository
@@ -208,6 +216,9 @@ tasks:
     status: todo
     deps:
       - scaffold
+    acceptance:
+      - full checkpoint verification is complete
+      - task notes capture what was learned in this phase and any replanning input for a fresh rerun
     verify_commands:
       - go test ./...
 ```
@@ -216,6 +227,7 @@ The intended use is:
 
 - `ghost-plan.yaml` is machine-owned execution state
 - the runner normally advances by updating task status and notes in `ghost-plan.yaml`, not by checking boxes in `TODO.md`
+- each task should end by leaving short notes about what it learned in that phase so the plan can be revised and rerun from a fresh environment
 - `TODO.md` is still useful when you want legacy checklist mode or want to keep one constraints doc
 - `ghost-claude init` can generate the initial plan from a TODO file, a design doc, or a directory of source files
 - your external planner can still generate both files if you prefer that flow
@@ -244,7 +256,7 @@ The intended use is:
 | `acceptance`      | Optional acceptance criteria for the task.                                              |
 | `verify_commands` | Optional shell commands run by `task finalize` before a `done` task stays `done`.       |
 | `commit_message`  | Optional commit message used by the default finalizer workflow.                          |
-| `notes`           | Optional execution notes. Plan-mode progress is tracked from `status` plus `notes`.     |
+| `notes`           | Optional execution notes and phase learnings. Plan-mode progress is tracked from `status` plus `notes`. |
 
 ### Task statuses
 
@@ -273,21 +285,23 @@ The intended use is:
 | Field              | Default      | Meaning                                                                 |
 | ------------------ | ------------ | ----------------------------------------------------------------------- |
 | `command`          | `claude`     | Executable to launch.                                                   |
-| `args`             | `["--effort", "max"]` | Extra CLI flags passed to Claude. If you set custom args without an explicit `--effort`, ghost-claude appends `--effort max`. |
+| `args`             | `["--effort", "max", "--permission-mode", "bypassPermissions"]` | Extra CLI flags passed to Claude. If you set custom args without an explicit `--effort`, ghost-claude appends `--effort max`. If you do not set a Claude permission flag, ghost-claude appends `--permission-mode bypassPermissions` so agent steps do not stop on approval prompts. |
 | `transport`        | `tui`        | `tui` drives the fullscreen UI inside a PTY. `print` uses `--print`.   |
 | `startup_timeout`  | `30s`        | How long to wait for Claude to become ready before failing.             |
 | `session_strategy` | `session_id` | `session_id` starts a new session per item; `continue` resumes.         |
 
 ### `codex` block
 
-| Field     | Default                                           | Meaning                                                  |
-| --------- | ------------------------------------------------- | -------------------------------------------------------- |
-| `command` | `codex`                                           | Executable to launch.                                    |
-| `args`    | `["--dangerously-bypass-approvals-and-sandbox", "exec", "-c", "model_reasoning_effort=\"xhigh\""]` | Extra CLI flags passed to Codex before the rendered prompt. |
+| Field             | Default                                                                 | Meaning                                                                 |
+| ----------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `command`         | `codex`                                                                 | Executable to launch.                                                   |
+| `transport`       | `tui`                                                                   | `tui` drives Codex's native interactive UI inside a PTY. `exec` keeps the non-interactive runner flow. |
+| `startup_timeout` | `30s`                                                                   | How long to wait for Codex to become ready in `tui` mode before failing. |
+| `args`            | `["--dangerously-bypass-approvals-and-sandbox", "-c", "model_reasoning_effort=\"xhigh\""]` | Extra CLI flags passed to Codex before the rendered prompt.             |
 
 ghost-claude prepends `--dangerously-bypass-approvals-and-sandbox` to Codex invocations so the agent never pauses for approval prompts. If you set custom `codex.args` without an explicit `model_reasoning_effort=...` override, ghost-claude appends `-c model_reasoning_effort="xhigh"`.
 
-When the Codex subcommand is `exec`, ghost-claude enables Codex's JSON event stream internally and renders a filtered terminal view: agent messages, command names, and file-change summaries stay visible, while command output, raw file reads, and diff bodies are suppressed. If you explicitly include `--json` in `codex.args`, ghost-claude leaves the stream untouched.
+In `tui` mode, Codex runs the same fullscreen terminal UI you get from invoking `codex` yourself, and ghost-claude reuses that PTY session across steps for the current item. In `exec` mode, ghost-claude enables Codex's JSON event stream internally and renders a filtered terminal view: the runner prints the rendered step instructions first, then agent messages, command names, and file-change summaries stay visible, while command output, raw file reads, and diff bodies are suppressed. If you explicitly include `--json` in `codex.args`, ghost-claude leaves the stream untouched.
 
 ### Step fields
 
@@ -300,7 +314,7 @@ When the Codex subcommand is `exec`, ghost-claude enables Codex's JSON event str
 | `command`           | exec        | Argv list to run. Each element is a Go template.                  |
 | `working_dir`       | exec        | Defaults to `workspace`. Relative paths resolve from `workspace`. |
 | `env`               | exec        | Extra env vars. Values are Go templates.                          |
-| `fresh_session`     | claude-backed steps | Run this Claude-backed step in a one-off session instead of the shared item session. |
+| `fresh_session`     | agent-backed steps | Run this Claude- or Codex-backed step in a one-off TUI session instead of the shared item session. |
 | `timeout`           | all         | Go duration (for example `10m`). No timeout by default.           |
 | `continue_on_error` | all         | Log the failure and keep going instead of aborting.               |
 | `disabled`          | all         | Skip the step.                                                    |
@@ -337,12 +351,15 @@ Prompts, `command`, `working_dir`, and `env` values are rendered with Go's `text
 - In the normal plan-based flow, the runner advances when the selected task changes status or notes in `ghost-plan.yaml`.
 - The generated config from `ghost-claude init` runs in plan mode, so `TODO.md` is not the live execution queue unless you deliberately switch back to legacy TODO mode.
 - `ghost-plan.yaml` is intended to be machine-owned state. The default workflow updates it through `ghost-claude task finalize`.
+- In the default scaffold, task-result notes are intended to capture what the coder learned in that phase so you can revise the plan and rerun it from a fresh environment.
 - `ghost-claude task finalize` accepts `done`, `in_progress`, `blocked`, and `manual` task results. The scaffolded prompts only instruct the implementation steps to emit the first three.
 - `verify_commands` lets plan tasks declare deterministic checks for the exec finalizer to run before a task can stay `done`.
 - If a task result says `done` and a `verify_commands` command fails, the finalizer rewrites the task to `in_progress`, appends a verification-failure note, removes the result file, and returns an error without committing.
 - `ghost-claude task finalize` also removes the default peer-review artifact for the task so it does not get staged into the commit.
+- `required_outputs` lets a step declare files it must leave behind. The runner creates parent directories before the step runs and fails the step immediately if the files are still missing afterward.
 - The finalizer stages changes with `git add -A` and only creates a commit when something is actually staged.
-- Codex steps are non-interactive by default because the scaffold uses `codex exec`. In that mode, ghost-claude suppresses raw file-read and diff payloads but still shows the rest of Codex's progress. If you want a different Codex mode, change the `codex.args` block.
+- Codex steps use native TUI mode by default, so the app now shows the same Codex interface you get from running `codex` directly.
+- If you prefer the older non-interactive behavior, set `codex.transport: exec`. In that mode, ghost-claude suppresses raw file-read and diff payloads but still shows the rest of Codex's progress.
 - `--coder` and `--reviewer` are independent. You can set them to different agents or to the same agent.
 - Agent role selection is runtime-only. Use `--coder` and `--reviewer` to override the defaults of coder=`codex` and reviewer=`claude`.
 - `ghost-claude init` uses the configured Claude transport. With the default `tui` transport, you can watch Claude generate and review the plan live in your terminal.

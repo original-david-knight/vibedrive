@@ -24,9 +24,10 @@ claude:
 
 codex:
   command: codex
+  transport: tui
+  startup_timeout: 30s
   args:
     - --dangerously-bypass-approvals-and-sandbox
-    - exec
     - -c
     - model_reasoning_effort="xhigh"
 
@@ -69,12 +70,15 @@ workflows:
           Do not edit {{ .PlanFile }} directly.
 
           Before you stop, write {{ .TaskResultPath }} as JSON with this schema:
-          {"status":"done|in_progress|blocked","notes":"brief summary"}
+          {"status":"done|in_progress|blocked","notes":"brief phase notes"}
 
           Set status to done only when the implementation work for this task is complete and ready for the configured automated verification commands.
           Set status to in_progress when meaningful progress was made but more work is still required.
           Set status to blocked when an external dependency, human decision, or missing prerequisite prevents completion.
+          Use notes to capture what was learned in this phase, especially discoveries, follow-up risks, or plan adjustments that matter if the project is re-planned and rerun in a fresh environment.
           Keep notes short and specific.
+        required_outputs:
+          - "{{ .TaskResultPath }}"
 
       - name: peer-review
         type: agent
@@ -90,6 +94,8 @@ workflows:
           Use decision=approved with an empty findings list when there are no actionable issues.
           Use decision=changes_requested only when the coder should make follow-up fixes before finalize.
           Keep findings short, concrete, and specific enough for the coder to act on directly.
+        required_outputs:
+          - "{{ .ReviewPath }}"
 
       - name: address-peer-review
         type: agent
@@ -103,8 +109,11 @@ workflows:
           - leave it as done only if the task is complete and ready for verification
           - change it to in_progress if review issues remain or more work is needed
           - change it to blocked if an external dependency or human decision prevents completion
+          - keep the notes focused on what this phase taught you that should inform replanning in a fresh environment
 
           Do not edit {{ .PlanFile }} directly.
+        required_outputs:
+          - "{{ .TaskResultPath }}"
 
       - name: finalize-task
         type: exec
@@ -154,12 +163,15 @@ workflows:
           Do not edit {{ .PlanFile }} directly.
 
           Before you stop, write {{ .TaskResultPath }} as JSON with this schema:
-          {"status":"done|in_progress|blocked","notes":"brief summary"}
+          {"status":"done|in_progress|blocked","notes":"brief phase notes"}
 
           Set status to done only when the checkpoint work is complete and ready for the configured automated verification commands.
           Set status to in_progress when meaningful progress was made but more work is still required.
           Set status to blocked when an external dependency, human decision, or missing prerequisite prevents completion.
+          Use notes to capture what was learned in this phase, especially discoveries, follow-up risks, or plan adjustments that matter if the project is re-planned and rerun in a fresh environment.
           Keep notes short and specific.
+        required_outputs:
+          - "{{ .TaskResultPath }}"
 
       - name: peer-review
         type: agent
@@ -175,6 +187,8 @@ workflows:
           Use decision=approved with an empty findings list when there are no actionable issues.
           Use decision=changes_requested only when the coder should make follow-up fixes before finalize.
           Keep findings short, concrete, and specific enough for the coder to act on directly.
+        required_outputs:
+          - "{{ .ReviewPath }}"
 
       - name: address-peer-review
         type: agent
@@ -188,8 +202,11 @@ workflows:
           - leave it as done only if the checkpoint is complete and ready for verification
           - change it to in_progress if review issues remain or more work is needed
           - change it to blocked if an external dependency or human decision prevents completion
+          - keep the notes focused on what this phase taught you that should inform replanning in a fresh environment
 
           Do not edit {{ .PlanFile }} directly.
+        required_outputs:
+          - "{{ .TaskResultPath }}"
 
       - name: finalize-task
         type: exec

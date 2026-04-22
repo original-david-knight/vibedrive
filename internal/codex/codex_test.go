@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -30,12 +31,12 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"D
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	client, err := New(scriptPath, []string{"exec"}, dir, &stdout, &stderr)
+	client, err := New(scriptPath, []string{"exec"}, dir, TransportExec, "", &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 
-	if err := client.RunPrompt(context.Background(), "ignored"); err != nil {
+	if err := client.RunPrompt(context.Background(), nil, "ignored"); err != nil {
 		t.Fatalf("RunPrompt returned error: %v", err)
 	}
 
@@ -71,12 +72,12 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"command_execution","comm
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	client, err := New(scriptPath, []string{"exec"}, dir, &stdout, &stderr)
+	client, err := New(scriptPath, []string{"exec"}, dir, TransportExec, "", &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 
-	if err := client.RunPrompt(context.Background(), "ignored"); err != nil {
+	if err := client.RunPrompt(context.Background(), nil, "ignored"); err != nil {
 		t.Fatalf("RunPrompt returned error: %v", err)
 	}
 
@@ -101,12 +102,12 @@ done
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	client, err := New(scriptPath, []string{"exec", "--json"}, dir, &stdout, &stderr)
+	client, err := New(scriptPath, []string{"exec", "--json"}, dir, TransportExec, "", &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 
-	if err := client.RunPrompt(context.Background(), "hello"); err != nil {
+	if err := client.RunPrompt(context.Background(), nil, "hello"); err != nil {
 		t.Fatalf("RunPrompt returned error: %v", err)
 	}
 
@@ -117,7 +118,7 @@ done
 }
 
 func TestShouldFilterExecOutputDetectsExecAfterGlobalFlags(t *testing.T) {
-	client, err := New("codex", []string{"--dangerously-bypass-approvals-and-sandbox", "exec", "-c", `model_reasoning_effort="xhigh"`}, ".", io.Discard, io.Discard)
+	client, err := New("codex", []string{"--dangerously-bypass-approvals-and-sandbox", "exec", "-c", `model_reasoning_effort="xhigh"`}, ".", TransportExec, "", io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -127,10 +128,134 @@ func TestShouldFilterExecOutputDetectsExecAfterGlobalFlags(t *testing.T) {
 	}
 }
 
+func TestNewDefaultsToTUIWhenNoExecSubcommandIsPresent(t *testing.T) {
+	client, err := New("codex", []string{"--dangerously-bypass-approvals-and-sandbox"}, ".", "", "", io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	if client.transport != TransportTUI {
+		t.Fatalf("expected default transport %q, got %q", TransportTUI, client.transport)
+	}
+}
+
+func TestTitleMonitorClassifiesIdleAndBusyTitles(t *testing.T) {
+	monitor := newTitleMonitor("/tmp/ghost_claude")
+
+	if state, ok := monitor.classifyTitle("ghost_claude"); !ok || state != "idle" {
+		t.Fatalf("expected idle title classification, got state=%q ok=%v", state, ok)
+	}
+	if state, ok := monitor.classifyTitle("⠋ ghost_claude"); !ok || state != "busy" {
+		t.Fatalf("expected busy title classification, got state=%q ok=%v", state, ok)
+	}
+}
+
+func TestTitleMonitorWaitsForBusyThenIdleBeforeStartupReady(t *testing.T) {
+	monitor := newTitleMonitor("/tmp/ghost_claude")
+
+	monitor.consume(titleChunk("ghost_claude"))
+	if monitor.snapshot().readyForPrompt() {
+		t.Fatal("expected initial idle title to be insufficient for startup readiness")
+	}
+
+	monitor.consume(titleChunk("⠋ ghost_claude"))
+	if monitor.snapshot().readyForPrompt() {
+		t.Fatal("expected busy title to remain not ready")
+	}
+
+	monitor.consume(titleChunk("ghost_claude"))
+	if !monitor.snapshot().readyForPrompt() {
+		t.Fatal("expected idle after busy to mark startup ready")
+	}
+}
+
+func TestWriteBracketedPasteWrapsPayload(t *testing.T) {
+	var buf bytes.Buffer
+	if err := writeBracketedPaste(&buf, "hello world"); err != nil {
+		t.Fatalf("writeBracketedPaste returned error: %v", err)
+	}
+	if got, want := buf.String(), bracketedPasteStart+"hello world"+bracketedPasteEnd; got != want {
+		t.Fatalf("writeBracketedPaste = %q, want %q", got, want)
+	}
+}
+
+func TestExecArgsAppendsExecAndDropsNoAltScreenForTUIFallback(t *testing.T) {
+	client, err := New("codex", []string{"--dangerously-bypass-approvals-and-sandbox", "--no-alt-screen", "-c", `model_reasoning_effort="xhigh"`}, ".", TransportTUI, "", io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	got := client.execArgs()
+	want := []string{"--dangerously-bypass-approvals-and-sandbox", "-c", `model_reasoning_effort="xhigh"`, "exec"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("execArgs = %v, want %v", got, want)
+	}
+}
+
+func TestRunPromptFallsBackToExecWhenTUISubmitIsNotAcknowledged(t *testing.T) {
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "fake-codex.py")
+	writeExecutable(t, scriptPath, `#!/usr/bin/env python3
+import json
+import os
+import sys
+import time
+
+if "exec" in sys.argv[1:]:
+    print(json.dumps({"type":"item.completed","item":{"type":"agent_message","text":"fell back to exec"}}))
+    sys.exit(0)
+
+idle = os.path.basename(os.getcwd()) or "codex"
+sys.stdout.write(f"\x1b]0;{idle}\x07")
+sys.stdout.flush()
+time.sleep(0.05)
+sys.stdout.write(f"\x1b]0;⠋ {idle}\x07")
+sys.stdout.flush()
+time.sleep(0.05)
+sys.stdout.write(f"\x1b]0;{idle}\x07")
+sys.stdout.flush()
+
+while True:
+    ch = os.read(0, 1)
+    if not ch or ch == b"\x04":
+        break
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	client, err := New(scriptPath, []string{"--dangerously-bypass-approvals-and-sandbox", "--no-alt-screen"}, dir, TransportTUI, "2s", &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	session, err := NewSession()
+	if err != nil {
+		t.Fatalf("NewSession returned error: %v", err)
+	}
+
+	if err := client.RunPrompt(context.Background(), session, "ignored"); err != nil {
+		t.Fatalf("RunPrompt returned error: %v", err)
+	}
+	if !session.ExecFallback {
+		t.Fatal("expected session to switch into exec fallback mode")
+	}
+	if !strings.Contains(stdout.String(), "fell back to exec") {
+		t.Fatalf("expected exec fallback output, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "falling back to `codex exec`") {
+		t.Fatalf("expected fallback warning, got %q", stderr.String())
+	}
+}
+
 func writeExecutable(t *testing.T, path, content string) {
 	t.Helper()
 
 	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
+}
+
+func titleChunk(title string) []byte {
+	return []byte("\x1b]0;" + title + "\x07")
 }
