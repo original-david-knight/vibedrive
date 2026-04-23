@@ -107,12 +107,30 @@ func applyRuntimeAgentRoles(cfg *config.Config, coder, reviewer string) error {
 func initCommand(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
+	fs.Usage = func() {
+		out := fs.Output()
+		fmt.Fprint(out, `Usage:
+  ghost-claude init [-config ghost-claude.yaml] [-workspace /path/to/repo] [--source PATH ...] [--planner claude|codex] [--print-sources] [-force] [SOURCE]
+
+Init source selection:
+  Repeat --source to add files or directories. A single positional SOURCE is accepted as one extra source.
+  Omit both --source and SOURCE to fall back to the workspace's top-level regular files.
+  --print-sources resolves, dedupes, sorts, and prints that source set without writing config or bootstrapping a planner.
+
+Bootstrap planning:
+  --planner selects the bootstrap planner and defaults to claude. Choosing it does not change runtime --coder/--reviewer defaults.
+  The generated plan keeps routine testing and cleanup inline by default and only adds standalone tech-debt follow-up when risk triggers justify it.
+
+Flags:
+`)
+		fs.PrintDefaults()
+	}
 
 	configPath := fs.String("config", "ghost-claude.yaml", "Path to write the workflow config file")
 	workspace := fs.String("workspace", "", "Workspace directory where the workflow config should be created")
 	var sources stringListFlag
 	fs.Var(&sources, "source", "Source file or directory to use when generating the initial plan (repeatable)")
-	planner := fs.String("planner", config.AgentClaude, "Bootstrap planner to use during init: claude or codex (default: claude)")
+	planner := fs.String("planner", config.AgentClaude, "Bootstrap planner to use during init: claude or codex")
 	force := fs.Bool("force", false, "Overwrite existing files")
 	printSources := fs.Bool("print-sources", false, "Resolve init sources, print them, and exit without writing config")
 
@@ -159,7 +177,13 @@ Usage:
   ghost-claude restart [-config ghost-claude.yaml] [-workspace /path/to/repo]
   ghost-claude task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
 
-If no subcommand is provided, ghost-claude behaves like "run".`)
+If no subcommand is provided, ghost-claude behaves like "run".
+
+Init notes:
+  Repeat --source to add files or directories. A single positional SOURCE adds one extra source.
+  Omit sources to scan the workspace's top-level regular files. Use --print-sources to preview that resolved source set.
+  Use --planner claude|codex to pick the bootstrap planner. This does not change runtime --coder/--reviewer defaults.
+  Bootstrap planning keeps routine testing and cleanup inline by default and only adds standalone tech-debt follow-up when risk triggers justify it.`)
 }
 
 func restartCommand(ctx context.Context, args []string) error {

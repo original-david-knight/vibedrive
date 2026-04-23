@@ -123,7 +123,7 @@ tasks:
     - id: document-init-improvements
       title: Refresh docs and help text for the new init workflow
       details: Update user-facing docs, command help, and narrative examples to match the new debt-review policy, source-selection workflow, and planner-selection behavior.
-      status: todo
+      status: done
       workflow: implement
       deps:
         - add-init-planner-selection
@@ -139,6 +139,7 @@ tasks:
       verify_commands:
         - go test ./cmd/ghost-claude
       commit_message: 'docs: refresh init documentation'
+      notes: README, top-level help, and init help now document repeatable --source inputs, deterministic --print-sources preview, planner selection, and trigger-based debt follow-up. Review-time verification also caught that Go flag help already prints defaults, so planner flag descriptions should not hard-code their own default text on fresh reruns; keep smoke-checking `help`, `init -h`, and temp-workspace `init --print-sources` because the main drift risk is help text, not behavior.
     - id: verify-init-improvements
       title: Verify the init improvements end to end
       details: Run the targeted and broad verification needed to catch regressions in the init, bootstrap, restart, and plan-handling paths after the new behavior lands.

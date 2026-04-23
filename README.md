@@ -33,10 +33,11 @@ go run ./cmd/ghost-claude <subcommand>
 From inside the repo you want ghost-claude to work on:
 
 ```bash
-ghost-claude init              # writes ghost-claude.yaml, uses all top-level regular files in the workspace dir as source, then asks Claude to generate ghost-plan.yaml and review it by default
-ghost-claude init --planner codex
+ghost-claude init              # writes ghost-claude.yaml, resolves top-level regular files as sources by default, then asks the selected bootstrap planner to generate and review ghost-plan.yaml
+ghost-claude init --planner codex   # bootstrap the plan with Codex instead of the default Claude planner
 ghost-claude init DESIGN.md    # single positional source alias
 ghost-claude init --source DESIGN.md --source docs/specs
+ghost-claude init --source DESIGN.md --source docs/specs --print-sources   # preview resolved sources without writing config or plan
 ghost-claude restart           # replans from prior task notes, then resets ghost-plan.yaml to a fresh-run state
 ghost-claude run    # starts the loop with coder=codex and reviewer=claude
 ghost-claude run --coder claude --reviewer codex   # flips roles at run time without changing ghost-plan.yaml
@@ -56,6 +57,7 @@ Preview what would happen without touching anything:
 ```bash
 ghost-claude run --dry-run
 ghost-claude init --print-sources
+ghost-claude init --print-sources --source DESIGN.md --source docs/specs
 ```
 
 `ghost-claude init` bootstraps plan mode. The generated config points the runner at `ghost-plan.yaml`, not at `TODO.md`.
@@ -84,7 +86,7 @@ The default workflow scaffolded by `ghost-claude init` is plan-oriented and uses
 During `init`, ghost-claude bootstraps plan mode in two phases:
 
 1. Write `ghost-claude.yaml`.
-2. Ask the selected bootstrap planner to read every resolved init source, then generate `ghost-plan.yaml`, review it critically, and revise the plan. `ghost-claude init` defaults to `--planner claude`, and `--planner codex` switches bootstrap planning to Codex without changing the runtime coder/reviewer defaults used by `run`. You can supply sources with repeatable `--source` flags and still use a single positional source as an alias for one extra entry. When no source is provided, init falls back to all top-level regular files in the workspace directory. `ghost-claude init --print-sources` resolves that same source set and exits before writing config or prompting the planner. The bootstrap prompt keeps testing and cleanup expectations inline with implementation by default, and only asks for standalone tech-debt tasks when planning-time risk triggers apply, such as a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface. Those triggers describe expected breadth and discovered risk, not actual changed-file counts that only exist after execution.
+2. Ask the selected bootstrap planner to read every resolved init source, then generate `ghost-plan.yaml`, review it critically, and revise the plan. `ghost-claude init` defaults to `--planner claude`, and `--planner codex` switches bootstrap planning to Codex without changing the runtime coder/reviewer defaults used by `run`. You can supply sources with repeatable `--source` flags and still use a single positional source as an alias for one extra entry. When no source is provided, init falls back to all top-level regular files in the workspace directory. `ghost-claude init --print-sources` resolves that same deduped, sorted source set in deterministic order and exits before writing config or prompting the planner. The bootstrap prompt keeps testing and cleanup expectations inline with implementation by default, and only asks for standalone tech-debt tasks when planning-time risk triggers apply, such as a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface. Those triggers describe expected breadth and discovered risk, not actual changed-file counts that only exist after execution.
 
 ## Subcommands
 
@@ -372,7 +374,7 @@ Prompts, `command`, `working_dir`, and `env` values are rendered with Go's `text
 - If you prefer the older non-interactive behavior, set `codex.transport: exec`. In that mode, ghost-claude suppresses raw file-read and diff payloads but still shows the rest of Codex's progress.
 - `--coder` and `--reviewer` are independent. You can set them to different agents or to the same agent.
 - Agent role selection is runtime-only. Use `--coder` and `--reviewer` to override the defaults of coder=`codex` and reviewer=`claude`.
-- `ghost-claude init` uses the configured Claude transport. With the default `tui` transport, you can watch Claude generate and review the plan live in your terminal.
+- `ghost-claude init` uses the selected bootstrap planner and that planner's configured transport. With the default `--planner claude` and Claude `tui` transport, you can watch plan generation and review live in your terminal. `--planner codex` bootstraps through the configured Codex client instead.
 - In TUI mode, YAML multiline prompts are flattened into one submitted message, because real newlines would be interpreted as separate messages by Claude's composer.
 - In a fresh workspace, the runner auto-confirms Claude's trust dialog so the loop can start unattended.
 - TUI automation detects "Claude is idle" from terminal-title transitions. If a future Claude release changes that behavior, the detector may need updating.

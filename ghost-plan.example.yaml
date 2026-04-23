@@ -2,9 +2,10 @@ project:
   name: example-project
   objective: Ship the project end-to-end in this repository.
   source_docs:
-    - TODO.md
+    - DESIGN.md
+    - TEST_PLAN.md
   constraint_files:
-    - TODO.md
+    - DESIGN.md
 
 tasks:
   - id: bootstrap
@@ -13,7 +14,8 @@ tasks:
     status: todo
     details: >-
       Describe the goal, relevant files, and any important constraints the agent
-      should keep in mind while implementing this task.
+      should keep in mind while implementing this task. Keep routine testing and
+      cleanup inline here unless a trigger-justified follow-up task is needed.
     acceptance:
       - Define concrete acceptance criteria here.
       - Leave task notes describing what was learned in this phase and what should change if the plan is rerun from a fresh environment.
