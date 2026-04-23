@@ -38,6 +38,8 @@ func realMain() error {
 		return runCommand(ctx, args[1:])
 	case "init":
 		return initCommand(ctx, args[1:])
+	case "restart":
+		return restartCommand(ctx, args[1:])
 	case "task":
 		return taskCommand(ctx, args[1:])
 	case "-h", "--help", "help":
@@ -135,9 +137,36 @@ func printUsage() {
 Usage:
   ghost-claude run [-config ghost-claude.yaml] [-workspace /path/to/repo] [-dry-run] [-coder claude|codex] [-reviewer claude|codex]
   ghost-claude init [-config ghost-claude.yaml] [-workspace /path/to/repo] [-source PATH] [-force] [SOURCE]
+  ghost-claude restart [-config ghost-claude.yaml] [-workspace /path/to/repo]
   ghost-claude task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
 
 If no subcommand is provided, ghost-claude behaves like "run".`)
+}
+
+func restartCommand(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("restart", flag.ContinueOnError)
+	fs.SetOutput(os.Stdout)
+
+	configPath := fs.String("config", "ghost-claude.yaml", "Path to the workflow config file")
+	workspace := fs.String("workspace", "", "Workspace directory containing the workflow config")
+
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+
+	if len(fs.Args()) != 0 {
+		return fmt.Errorf("restart does not accept positional arguments")
+	}
+
+	resolvedConfigPath, err := resolveConfigPath(*configPath, *workspace)
+	if err != nil {
+		return err
+	}
+
+	return bootstrap.New(os.Stdout, os.Stderr).Restart(ctx, resolvedConfigPath)
 }
 
 func taskCommand(ctx context.Context, args []string) error {

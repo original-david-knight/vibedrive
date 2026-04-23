@@ -35,6 +35,7 @@ From inside the repo you want ghost-claude to work on:
 ```bash
 ghost-claude init              # writes ghost-claude.yaml, uses all top-level regular files in the workspace dir as source, then asks Claude to generate ghost-plan.yaml and review it
 ghost-claude init DESIGN.md    # or point init at a specific source file or directory
+ghost-claude restart           # replans from prior task notes, then resets ghost-plan.yaml to a fresh-run state
 ghost-claude run    # starts the loop with coder=codex and reviewer=claude
 ghost-claude run --coder claude --reviewer codex   # flips roles at run time without changing ghost-plan.yaml
 ghost-claude run --coder codex --reviewer codex    # same agent can both code and review
@@ -44,6 +45,7 @@ Target a different repo without `cd`:
 
 ```bash
 ghost-claude init --workspace /path/to/repo
+ghost-claude restart --workspace /path/to/repo
 ghost-claude run  --workspace /path/to/repo
 ```
 
@@ -79,13 +81,14 @@ The default workflow scaffolded by `ghost-claude init` is plan-oriented and uses
 During `init`, ghost-claude bootstraps plan mode in two phases:
 
 1. Write `ghost-claude.yaml`.
-2. Ask Claude to read the provided source file or directory, or all regular files in the workspace directory when no source is provided, then generate `ghost-plan.yaml`, review it critically, and revise the plan.
+2. Ask Claude to read the provided source file or directory, or all regular files in the workspace directory when no source is provided, then generate `ghost-plan.yaml`, review it critically, and revise the plan. The bootstrap prompt also requires two tech-debt tasks after every five significant implementation tasks: one to review test coverage and add missing tests, and one to clean up stale, overcomplicated, duplicated, or unreadable code.
 
 ## Subcommands
 
 ```
 ghost-claude run  [-config PATH] [-workspace DIR] [-dry-run] [-coder claude|codex] [-reviewer claude|codex]
 ghost-claude init [-config PATH] [-workspace DIR] [-source PATH] [-force] [SOURCE]
+ghost-claude restart [-config PATH] [-workspace DIR]
 ghost-claude task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
 ghost-claude help
 ```
@@ -228,8 +231,10 @@ The intended use is:
 - `ghost-plan.yaml` is machine-owned execution state
 - the runner normally advances by updating task status and notes in `ghost-plan.yaml`, not by checking boxes in `TODO.md`
 - each task should end by leaving short notes about what it learned in that phase so the plan can be revised and rerun from a fresh environment
+- `ghost-claude restart` re-reads the current plan, source docs, and prior task notes, then rewrites `ghost-plan.yaml` for a fresh rerun with every task back at `todo`
 - `TODO.md` is still useful when you want legacy checklist mode or want to keep one constraints doc
 - `ghost-claude init` can generate the initial plan from a TODO file, a design doc, or a directory of source files
+- the scaffolded `init` prompt asks for two tech-debt tasks after every five significant implementation tasks: a test-coverage pass and a code-health cleanup pass
 - your external planner can still generate both files if you prefer that flow
 
 ### Project fields

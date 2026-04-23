@@ -156,6 +156,11 @@ Requirements for the plan:
 - preserve every explicit requirement, constraint, checkpoint, success gate, and verification demand from the listed source inputs
 - decompose the project into executable tasks that are sized for one focused implementation iteration and one coherent commit when practical
 - use workflow implement for coding work and workflow checkpoint for explicit full-suite or milestone verification gates
+- treat significant dev steps as implement tasks that materially build or change production code, shipped behavior, or core project infrastructure; do not count checkpoint tasks or tech-debt cleanup tasks toward this cadence
+- after every 5 significant dev steps in dependency order, insert exactly 2 implement tech-debt tasks before more significant dev work continues
+- the first tech-debt task must review recent test coverage and add or update tests wherever coverage is missing or weak
+- the second tech-debt task must inspect the newly changed area for stale, overcomplicated, duplicated, or unreadable code and clean it up without weakening behavior or tests
+- chain those tech-debt tasks directly after the fifth significant dev step, and make later significant dev steps depend on the cleanup task so the cadence is structurally enforced in the task graph
 - keep all generated tasks at status todo
 - do not silently drop manual, machine-specific, or external-dependency work; represent it in tasks/details so the execution plan remains faithful to the source requirements
 - include explicit checkpoint tasks wherever the requirements call for them
@@ -183,6 +188,8 @@ Perform a critical review of the plan. Focus on:
 - incorrect or weak task decomposition
 - missing checkpoints or verification work
 - missing or weak automated verification commands
+- missing or incorrect insertion of the required 2 tech-debt tasks after each block of 5 significant dev steps
+- tech-debt tasks that do not explicitly review test coverage, add needed tests, and then clean up stale, overcomplicated, duplicated, or unreadable code before more significant dev work resumes
 - tasks that do not end by capturing phase learnings for future replanning and fresh reruns
 - bad dependency ordering
 - tasks that are too large, too vague, or not committable

@@ -61,6 +61,15 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 	if !strings.Contains(client.prompts[0], "what it learned in that phase") {
 		t.Fatalf("expected first prompt to require per-task phase notes, got %q", client.prompts[0])
 	}
+	if !strings.Contains(client.prompts[0], "after every 5 significant dev steps") {
+		t.Fatalf("expected first prompt to require tech-debt cadence, got %q", client.prompts[0])
+	}
+	if !strings.Contains(client.prompts[0], "review recent test coverage and add or update tests") {
+		t.Fatalf("expected first prompt to require the test-coverage tech-debt step, got %q", client.prompts[0])
+	}
+	if !strings.Contains(client.prompts[0], "stale, overcomplicated, duplicated, or unreadable code") {
+		t.Fatalf("expected first prompt to require the cleanup tech-debt step, got %q", client.prompts[0])
+	}
 	if strings.Contains(client.prompts[0], "Replace the file if it already exists.") {
 		t.Fatalf("expected first prompt to omit replace instructions, got %q", client.prompts[0])
 	}
@@ -75,6 +84,9 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 	}
 	if !strings.Contains(client.prompts[1], "capturing phase learnings") {
 		t.Fatalf("expected second prompt to review note-capture coverage, got %q", client.prompts[1])
+	}
+	if !strings.Contains(client.prompts[1], "required 2 tech-debt tasks after each block of 5 significant dev steps") {
+		t.Fatalf("expected second prompt to review the tech-debt cadence, got %q", client.prompts[1])
 	}
 	if strings.Contains(client.prompts[1], "/codex") {
 		t.Fatalf("expected second prompt to stop requiring /codex, got %q", client.prompts[1])

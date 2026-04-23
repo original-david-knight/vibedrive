@@ -1,0 +1,96 @@
+package bootstrap
+
+import (
+	"context"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"ghost_claude/internal/claude"
+	"ghost_claude/internal/config"
+	"ghost_claude/internal/plan"
+	"ghost_claude/internal/scaffold"
+)
+
+func TestInitializerRestartReplansFromNotesAndResetsProgress(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	designPath := filepath.Join(dir, "DESIGN.md")
+
+	if err := scaffold.Write(configPath, false); err != nil {
+		t.Fatalf("Write returned error: %v", err)
+	}
+	if err := os.WriteFile(designPath, []byte("# Design\n\nShip the project cleanly.\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	if err := os.WriteFile(planPath, []byte(`project:
+  name: demo
+  objective: Ship the project.
+  source_docs:
+    - DESIGN.md
+  constraint_files:
+    - DESIGN.md
+tasks:
+  - id: seed-fixtures
+    title: Seed fixtures
+    status: done
+    notes: Tests were flaky because fixture setup happened too late.
+  - id: checkpoint-e2e
+    title: End-to-end checkpoint
+    status: blocked
+    notes: Split browser verification into a dedicated checkpoint before packaging.
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	client := &fakeClient{}
+	init := New(io.Discard, io.Discard)
+	init.newClient = func(cfg *config.Config, stdout, stderr io.Writer) (promptClient, error) {
+		if cfg.PlanFile != planPath {
+			t.Fatalf("expected plan path %q, got %q", planPath, cfg.PlanFile)
+		}
+		return client, nil
+	}
+	init.newSession = func(strategy string) (*claude.Session, error) {
+		return &claude.Session{Strategy: strategy, ID: "session-1"}, nil
+	}
+
+	if err := init.Restart(context.Background(), configPath); err != nil {
+		t.Fatalf("Restart returned error: %v", err)
+	}
+
+	if len(client.prompts) != 2 {
+		t.Fatalf("expected 2 prompts, got %d", len(client.prompts))
+	}
+	if !strings.Contains(client.prompts[0], "Tests were flaky because fixture setup happened too late.") {
+		t.Fatalf("expected first prompt to include prior notes, got %q", client.prompts[0])
+	}
+	if !strings.Contains(client.prompts[0], "DESIGN.md") {
+		t.Fatalf("expected first prompt to include DESIGN.md, got %q", client.prompts[0])
+	}
+	if !strings.Contains(client.prompts[0], "reset every task status to todo") {
+		t.Fatalf("expected first prompt to require todo reset, got %q", client.prompts[0])
+	}
+	if !strings.Contains(client.prompts[1], "leftover task notes from the old run") {
+		t.Fatalf("expected second prompt to review stale notes, got %q", client.prompts[1])
+	}
+	if !client.closed {
+		t.Fatal("expected client to be closed")
+	}
+
+	updatedPlan, err := plan.Load(planPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	for _, task := range updatedPlan.Tasks {
+		if task.Status != plan.StatusTodo {
+			t.Fatalf("expected task %q status %q, got %q", task.ID, plan.StatusTodo, task.Status)
+		}
+		if task.Notes != "" {
+			t.Fatalf("expected task %q notes to be cleared, got %q", task.ID, task.Notes)
+		}
+	}
+}

@@ -1,0 +1,208 @@
+package bootstrap
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"ghost_claude/internal/config"
+	"ghost_claude/internal/plan"
+)
+
+func (i *Initializer) Restart(ctx context.Context, configPath string) error {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(cfg.PlanFile) == "" {
+		return fmt.Errorf("plan_file must be set in %s for restart", configPath)
+	}
+
+	currentPlan, err := plan.Load(cfg.PlanFile)
+	if err != nil {
+		return err
+	}
+
+	source, err := resolveRestartSources(cfg.Workspace, currentPlan.Project)
+	if err != nil {
+		return err
+	}
+
+	client, err := i.newClient(cfg, i.stdout, i.stderr)
+	if err != nil {
+		return err
+	}
+
+	session, err := i.newSession(config.SessionStrategySessionID)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = client.Close(session)
+	}()
+
+	prompts := []string{
+		renderRestartPlanPrompt(cfg, currentPlan, source),
+		renderRestartReviewPrompt(cfg, currentPlan, source),
+	}
+
+	for _, prompt := range prompts {
+		if err := client.RunPrompt(ctx, session, prompt); err != nil {
+			return err
+		}
+	}
+
+	restartedPlan, err := plan.Load(cfg.PlanFile)
+	if err != nil {
+		return err
+	}
+	restartedPlan.ResetProgress()
+	if err := restartedPlan.Save(); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(i.stdout, "Prepared %s for a fresh restart\n", cfg.PlanFile)
+	return nil
+}
+
+func renderRestartPlanPrompt(cfg *config.Config, currentPlan *plan.File, source sourceSpec) string {
+	planRef := repoRelative(cfg.Workspace, cfg.PlanFile)
+	sourceRefs := renderRestartSourceRefs(cfg.Workspace, source.Files)
+	notesSummary := renderRestartNotesSummary(currentPlan)
+
+	return strings.TrimSpace(fmt.Sprintf(`
+Restart this project from scratch by revising the existing execution plan.
+
+Read %s completely before editing it.
+
+Also read these project source inputs when revising the plan:
+%s
+
+Analyze every note captured from the previous run before you change the plan:
+%s
+
+Rewrite %s in place so the next run avoids the difficulties surfaced above.
+
+Requirements for the revised plan:
+- preserve the hard constraints, success criteria, and source coverage from the existing plan and source inputs
+- do not weaken or remove requirements from the source inputs
+- incorporate the prior-run notes into better task decomposition, dependency ordering, context_files, acceptance criteria, verify_commands, and checkpoint placement
+- add, split, reorder, or remove tasks when the previous run shows the old plan would repeat avoidable difficulty
+- keep tasks sized for one focused implementation iteration and one coherent commit when practical
+- keep workflow metadata and commit messages useful and specific
+- keep or restore the required 2 implement tech-debt tasks after every block of 5 significant dev steps: first a test-coverage pass, then a cleanup pass for stale, overcomplicated, duplicated, or unreadable code
+- do not silently drop manual, machine-specific, or external-dependency work; represent it in tasks/details so the plan remains faithful to the source requirements
+- include explicit checkpoint tasks wherever the requirements call for them
+- strengthen weak or missing verify_commands whenever a deterministic automated check exists
+- after incorporating the prior-run learnings, clear stale task notes from the previous run
+- reset every task status to todo so the project can restart from a fresh environment
+- keep valid YAML and quote any string list item that contains a colon followed by a space
+
+After writing %s, quickly check that the YAML parses and that dependency ordering is coherent.
+`, planRef, sourceRefs, notesSummary, planRef, planRef))
+}
+
+func renderRestartReviewPrompt(cfg *config.Config, currentPlan *plan.File, source sourceSpec) string {
+	planRef := repoRelative(cfg.Workspace, cfg.PlanFile)
+	sourceRefs := renderRestartSourceRefs(cfg.Workspace, source.Files)
+	notesSummary := renderRestartNotesSummary(currentPlan)
+
+	return strings.TrimSpace(fmt.Sprintf(`
+Review the restarted execution plan in %s.
+
+Project source inputs:
+%s
+
+Previous-run notes that must already be reflected in the new plan:
+%s
+
+Perform a critical review of the restarted plan. Focus on:
+- prior-run notes that were ignored or only copied into notes instead of being turned into better tasks, dependencies, details, acceptance criteria, or verification
+- task sequencing or missing preparatory work that would recreate the same difficulties
+- tasks that are too large, vague, or not committable
+- missing checkpoints or weak automated verification commands
+- missing or incorrect insertion of the required 2 tech-debt tasks after each block of 5 significant dev steps
+- statuses that were not reset to todo
+- leftover task notes from the old run that should have been cleared for the fresh restart
+- omitted or weakened requirements from the source inputs
+
+Incorporate any actionable review feedback directly into %s.
+
+Keep the YAML valid. Keep every task status at todo and leave task notes empty for the fresh restart.
+`, planRef, sourceRefs, notesSummary, planRef))
+}
+
+func resolveRestartSources(workspace string, project plan.Project) (sourceSpec, error) {
+	files := make([]string, 0, len(project.SourceDocs)+len(project.ConstraintFiles))
+	seen := make(map[string]struct{}, len(project.SourceDocs)+len(project.ConstraintFiles))
+
+	appendPath := func(ref string) error {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			return nil
+		}
+
+		path := ref
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(workspace, path)
+		}
+		path = filepath.Clean(path)
+
+		if _, ok := seen[path]; ok {
+			return nil
+		}
+
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("resolve restart source %q: %w", ref, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("restart source %q must be a regular file", ref)
+		}
+
+		seen[path] = struct{}{}
+		files = append(files, path)
+		return nil
+	}
+
+	for _, ref := range project.SourceDocs {
+		if err := appendPath(ref); err != nil {
+			return sourceSpec{}, err
+		}
+	}
+	for _, ref := range project.ConstraintFiles {
+		if err := appendPath(ref); err != nil {
+			return sourceSpec{}, err
+		}
+	}
+
+	return sourceSpec{Files: files}, nil
+}
+
+func renderRestartSourceRefs(workspace string, files []string) string {
+	if len(files) == 0 {
+		return "- No source docs are currently recorded in the plan; use the current plan file and any referenced local docs you discover while revising it."
+	}
+	return renderSourceRefs(workspace, files)
+}
+
+func renderRestartNotesSummary(currentPlan *plan.File) string {
+	lines := make([]string, 0, len(currentPlan.Tasks))
+	for _, task := range currentPlan.Tasks {
+		note := strings.TrimSpace(task.Notes)
+		if note == "" {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("- %s [%s]: %s", task.ID, task.Status, note))
+	}
+
+	if len(lines) == 0 {
+		return "- No previous task notes are recorded in the current plan."
+	}
+
+	return strings.Join(lines, "\n")
+}
