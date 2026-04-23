@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -48,7 +49,7 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 		return &claude.Session{Strategy: strategy, ID: "session-1"}, nil
 	}
 
-	if err := init.Run(context.Background(), configPath, designPath, false); err != nil {
+	if err := init.Run(context.Background(), configPath, []string{designPath}, false); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
@@ -130,7 +131,7 @@ func TestInitializerRunSkipsExistingPlanWithoutForce(t *testing.T) {
 		return client, nil
 	}
 
-	if err := init.Run(context.Background(), configPath, sourcePath, false); err != nil {
+	if err := init.Run(context.Background(), configPath, []string{sourcePath}, false); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
@@ -161,7 +162,7 @@ func TestInitializerRunRegeneratesPlanWithForce(t *testing.T) {
 		return &claude.Session{Strategy: strategy, ID: "session-1"}, nil
 	}
 
-	if err := init.Run(context.Background(), configPath, sourcePath, true); err != nil {
+	if err := init.Run(context.Background(), configPath, []string{sourcePath}, true); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
@@ -196,7 +197,7 @@ func TestInitializerRunUsesWorkspaceFilesWhenSourceOmitted(t *testing.T) {
 		return &claude.Session{Strategy: strategy, ID: "session-1"}, nil
 	}
 
-	if err := init.Run(context.Background(), configPath, "", false); err != nil {
+	if err := init.Run(context.Background(), configPath, nil, false); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
@@ -211,5 +212,136 @@ func TestInitializerRunUsesWorkspaceFilesWhenSourceOmitted(t *testing.T) {
 	}
 	if strings.Contains(client.prompts[0], "- ghost-claude.yaml") {
 		t.Fatalf("expected generated config to be excluded from default sources, got %q", client.prompts[0])
+	}
+}
+
+func TestInitializerRunRendersResolvedSourcesInSortedOrder(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	docsDir := filepath.Join(dir, "docs")
+
+	if err := os.Mkdir(docsDir, 0o755); err != nil {
+		t.Fatalf("Mkdir returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "zeta.md"), []byte("zeta\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "alpha.md"), []byte("alpha\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	client := &fakeClient{}
+	init := New(io.Discard, io.Discard)
+	init.newClient = func(cfg *config.Config, stdout, stderr io.Writer) (promptClient, error) {
+		return client, nil
+	}
+	init.newSession = func(strategy string) (*claude.Session, error) {
+		return &claude.Session{Strategy: strategy, ID: "session-1"}, nil
+	}
+
+	if err := init.Run(context.Background(), configPath, []string{"docs/zeta.md", "docs"}, false); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if len(client.prompts) != 2 {
+		t.Fatalf("expected 2 prompts, got %d", len(client.prompts))
+	}
+
+	alphaIndex := strings.Index(client.prompts[0], "- docs/alpha.md")
+	zetaIndex := strings.Index(client.prompts[0], "- docs/zeta.md")
+	if alphaIndex == -1 || zetaIndex == -1 {
+		t.Fatalf("expected prompt to include both resolved sources, got %q", client.prompts[0])
+	}
+	if alphaIndex > zetaIndex {
+		t.Fatalf("expected prompt to render sources in sorted order, got %q", client.prompts[0])
+	}
+}
+
+func TestInitializerPrintSourcesResolvesPreviewWithoutWritingConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	planPath := filepath.Join(dir, "ghost-plan.yaml")
+
+	if err := os.WriteFile(filepath.Join(dir, "DESIGN.md"), []byte("design\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "TEST_PLAN.md"), []byte("tests\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	if err := os.WriteFile(planPath, []byte("existing plan\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	init := New(&stdout, io.Discard)
+
+	if err := init.PrintSources(configPath, nil); err != nil {
+		t.Fatalf("PrintSources returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "- DESIGN.md") {
+		t.Fatalf("expected preview output to include DESIGN.md, got %q", output)
+	}
+	if !strings.Contains(output, "- TEST_PLAN.md") {
+		t.Fatalf("expected preview output to include TEST_PLAN.md, got %q", output)
+	}
+	if strings.Contains(output, "- ghost-plan.yaml") {
+		t.Fatalf("expected preview output to exclude the plan file, got %q", output)
+	}
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("expected PrintSources not to write config, stat err=%v", err)
+	}
+}
+
+func TestResolveSourcesDedupesAndSortsResolvedFiles(t *testing.T) {
+	dir := t.TempDir()
+	docsDir := filepath.Join(dir, "docs")
+
+	if err := os.Mkdir(docsDir, 0o755); err != nil {
+		t.Fatalf("Mkdir returned error: %v", err)
+	}
+	alphaPath := filepath.Join(docsDir, "alpha.md")
+	betaPath := filepath.Join(docsDir, "beta.md")
+	if err := os.WriteFile(alphaPath, []byte("alpha\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	if err := os.WriteFile(betaPath, []byte("beta\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	got, err := resolveSources(dir, []string{"docs/beta.md", "docs"})
+	if err != nil {
+		t.Fatalf("resolveSources returned error: %v", err)
+	}
+
+	if len(got.Files) != 2 {
+		t.Fatalf("expected 2 unique resolved files, got %d", len(got.Files))
+	}
+	if got.Files[0] != alphaPath || got.Files[1] != betaPath {
+		t.Fatalf("expected sorted files [%q %q], got %v", alphaPath, betaPath, got.Files)
+	}
+}
+
+func TestResolveSourcesRejectsEmptySelection(t *testing.T) {
+	if _, err := resolveSources(t.TempDir(), []string{"   "}); err == nil {
+		t.Fatal("expected resolveSources to reject an empty explicit source")
+	}
+}
+
+func TestResolveSourcesRejectsEmptyDirectorySelection(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	planPath := filepath.Join(dir, "ghost-plan.yaml")
+
+	if err := os.WriteFile(configPath, []byte("config\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	if err := os.WriteFile(planPath, []byte("plan\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	if _, err := resolveSources(dir, nil, configPath, planPath); err == nil {
+		t.Fatal("expected resolveSources to reject a directory with no usable regular files")
 	}
 }

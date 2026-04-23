@@ -31,6 +31,8 @@ type sourceSpec struct {
 	Files []string
 }
 
+const defaultPlanFile = "ghost-plan.yaml"
+
 func New(stdout, stderr io.Writer) *Initializer {
 	return &Initializer{
 		stdout: stdout,
@@ -50,7 +52,7 @@ func New(stdout, stderr io.Writer) *Initializer {
 	}
 }
 
-func (i *Initializer) Run(ctx context.Context, configPath, sourceArg string, force bool) error {
+func (i *Initializer) Run(ctx context.Context, configPath string, sourceArgs []string, force bool) error {
 	if err := scaffold.Write(configPath, force); err != nil {
 		return err
 	}
@@ -77,7 +79,7 @@ func (i *Initializer) Run(ctx context.Context, configPath, sourceArg string, for
 		}
 	}
 
-	source, err := resolveSource(cfg.Workspace, sourceArg, cfg.Path, cfg.PlanFile)
+	source, err := resolveSources(cfg.Workspace, sourceArgs, cfg.Path, cfg.PlanFile)
 	if err != nil {
 		return err
 	}
@@ -108,6 +110,21 @@ func (i *Initializer) Run(ctx context.Context, configPath, sourceArg string, for
 	}
 
 	return nil
+}
+
+func (i *Initializer) PrintSources(configPath string, sourceArgs []string) error {
+	cfg, err := resolvePreviewConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	source, err := resolveSources(cfg.Workspace, sourceArgs, cfg.Path, cfg.PlanFile)
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintln(i.stdout, renderSourceRefs(cfg.Workspace, source.Files))
+	return err
 }
 
 func renderCreatePlanPrompt(cfg *config.Config, source sourceSpec) string {
@@ -203,26 +220,21 @@ Keep the YAML valid. Keep task statuses at todo. Do not weaken or remove constra
 `, planRef, sourceRefs, planRef))
 }
 
-func resolveSource(workspace, sourceArg string, excludedPaths ...string) (sourceSpec, error) {
-	target := strings.TrimSpace(sourceArg)
-	if target == "" {
-		target = workspace
-	} else if !filepath.IsAbs(target) {
-		target = filepath.Join(workspace, target)
-	}
-	target = filepath.Clean(target)
-
-	info, err := os.Stat(target)
+func resolvePreviewConfig(configPath string) (*config.Config, error) {
+	absConfig, err := filepath.Abs(configPath)
 	if err != nil {
-		return sourceSpec{}, fmt.Errorf("resolve init source %q: %w", target, err)
-	}
-	if info.Mode().IsRegular() {
-		return sourceSpec{Files: []string{target}}, nil
-	}
-	if !info.IsDir() {
-		return sourceSpec{}, fmt.Errorf("init source %q must be a regular file or directory", target)
+		return nil, err
 	}
 
+	workspace := filepath.Dir(absConfig)
+	return &config.Config{
+		Path:      absConfig,
+		Workspace: workspace,
+		PlanFile:  filepath.Join(workspace, defaultPlanFile),
+	}, nil
+}
+
+func resolveSources(workspace string, sourceArgs []string, excludedPaths ...string) (sourceSpec, error) {
 	excluded := make(map[string]struct{}, len(excludedPaths))
 	for _, path := range excludedPaths {
 		if strings.TrimSpace(path) == "" {
@@ -231,16 +243,58 @@ func resolveSource(workspace, sourceArg string, excludedPaths ...string) (source
 		excluded[filepath.Clean(path)] = struct{}{}
 	}
 
-	entries, err := os.ReadDir(target)
-	if err != nil {
-		return sourceSpec{}, err
+	if len(sourceArgs) == 0 {
+		sourceArgs = []string{workspace}
 	}
 
-	files := make([]string, 0, len(entries))
+	files := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, sourceArg := range sourceArgs {
+		if err := appendResolvedSources(workspace, sourceArg, excluded, seen, &files); err != nil {
+			return sourceSpec{}, err
+		}
+	}
+
+	sort.Strings(files)
+	return sourceSpec{Files: files}, nil
+}
+
+func appendResolvedSources(workspace, sourceArg string, excluded map[string]struct{}, seen map[string]struct{}, files *[]string) error {
+	target := strings.TrimSpace(sourceArg)
+	if target == "" {
+		return fmt.Errorf("init source must not be empty")
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(workspace, target)
+	}
+	target = filepath.Clean(target)
+
+	info, err := os.Stat(target)
+	if err != nil {
+		return fmt.Errorf("resolve init source %q: %w", target, err)
+	}
+	if info.Mode().IsRegular() {
+		if _, ok := seen[target]; ok {
+			return nil
+		}
+		seen[target] = struct{}{}
+		*files = append(*files, target)
+		return nil
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("init source %q must be a regular file or directory", target)
+	}
+
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return err
+	}
+
+	foundRegular := false
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {
-			return sourceSpec{}, err
+			return err
 		}
 		if !info.Mode().IsRegular() {
 			continue
@@ -250,15 +304,19 @@ func resolveSource(workspace, sourceArg string, excludedPaths ...string) (source
 		if _, skip := excluded[filepath.Clean(path)]; skip {
 			continue
 		}
-		files = append(files, path)
+		foundRegular = true
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		*files = append(*files, path)
 	}
 
-	sort.Strings(files)
-	if len(files) == 0 {
-		return sourceSpec{}, fmt.Errorf("init source directory %q does not contain any regular files", target)
+	if !foundRegular {
+		return fmt.Errorf("init source directory %q does not contain any usable regular files", target)
 	}
 
-	return sourceSpec{Files: files}, nil
+	return nil
 }
 
 func renderSourceRefs(workspace string, files []string) string {

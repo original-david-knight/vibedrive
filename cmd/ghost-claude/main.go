@@ -108,8 +108,10 @@ func initCommand(ctx context.Context, args []string) error {
 
 	configPath := fs.String("config", "ghost-claude.yaml", "Path to write the workflow config file")
 	workspace := fs.String("workspace", "", "Workspace directory where the workflow config should be created")
-	source := fs.String("source", "", "Source file or directory to use when generating the initial plan")
+	var sources stringListFlag
+	fs.Var(&sources, "source", "Source file or directory to use when generating the initial plan (repeatable)")
 	force := fs.Bool("force", false, "Overwrite existing files")
+	printSources := fs.Bool("print-sources", false, "Resolve init sources, print them, and exit without writing config")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -118,7 +120,7 @@ func initCommand(ctx context.Context, args []string) error {
 		return err
 	}
 
-	sourceArg, err := resolveInitSourceArg(*source, fs.Args())
+	sourceArgs, err := resolveInitSourceArgs(sources, fs.Args())
 	if err != nil {
 		return err
 	}
@@ -128,7 +130,12 @@ func initCommand(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return bootstrap.New(os.Stdout, os.Stderr).Run(ctx, absConfig, sourceArg, *force)
+	init := bootstrap.New(os.Stdout, os.Stderr)
+	if *printSources {
+		return init.PrintSources(absConfig, sourceArgs)
+	}
+
+	return init.Run(ctx, absConfig, sourceArgs, *force)
 }
 
 func printUsage() {
@@ -136,7 +143,7 @@ func printUsage() {
 
 Usage:
   ghost-claude run [-config ghost-claude.yaml] [-workspace /path/to/repo] [-dry-run] [-coder claude|codex] [-reviewer claude|codex]
-  ghost-claude init [-config ghost-claude.yaml] [-workspace /path/to/repo] [-source PATH] [-force] [SOURCE]
+  ghost-claude init [-config ghost-claude.yaml] [-workspace /path/to/repo] [--source PATH ...] [--print-sources] [-force] [SOURCE]
   ghost-claude restart [-config ghost-claude.yaml] [-workspace /path/to/repo]
   ghost-claude task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
 
@@ -221,21 +228,44 @@ func finalizeTaskCommand(ctx context.Context, args []string) error {
 	}, os.Stdout, os.Stderr)
 }
 
-func resolveInitSourceArg(flagValue string, args []string) (string, error) {
-	flagValue = strings.TrimSpace(flagValue)
+type stringListFlag []string
 
-	switch {
-	case len(args) > 1:
-		return "", fmt.Errorf("init accepts at most one source argument")
-	case flagValue != "" && len(args) == 1:
-		return "", fmt.Errorf("init source cannot be set with both -source and a positional argument")
-	case flagValue != "":
-		return flagValue, nil
-	case len(args) == 1:
-		return strings.TrimSpace(args[0]), nil
-	default:
-		return "", nil
+func (f *stringListFlag) String() string {
+	if f == nil {
+		return ""
 	}
+	return strings.Join(*f, ",")
+}
+
+func (f *stringListFlag) Set(value string) error {
+	*f = append(*f, value)
+	return nil
+}
+
+func resolveInitSourceArgs(flagValues []string, args []string) ([]string, error) {
+	sources := make([]string, 0, len(flagValues)+len(args))
+
+	for _, value := range flagValues {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return nil, fmt.Errorf("init source must not be empty")
+		}
+		sources = append(sources, trimmed)
+	}
+
+	switch len(args) {
+	case 0:
+	case 1:
+		trimmed := strings.TrimSpace(args[0])
+		if trimmed == "" {
+			return nil, fmt.Errorf("init source must not be empty")
+		}
+		sources = append(sources, trimmed)
+	default:
+		return nil, fmt.Errorf("init accepts at most one positional source argument")
+	}
+
+	return sources, nil
 }
 
 func resolveConfigPath(configPath, workspace string) (string, error) {

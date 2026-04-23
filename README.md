@@ -34,7 +34,8 @@ From inside the repo you want ghost-claude to work on:
 
 ```bash
 ghost-claude init              # writes ghost-claude.yaml, uses all top-level regular files in the workspace dir as source, then asks Claude to generate ghost-plan.yaml and review it
-ghost-claude init DESIGN.md    # or point init at a specific source file or directory
+ghost-claude init DESIGN.md    # single positional source alias
+ghost-claude init --source DESIGN.md --source docs/specs
 ghost-claude restart           # replans from prior task notes, then resets ghost-plan.yaml to a fresh-run state
 ghost-claude run    # starts the loop with coder=codex and reviewer=claude
 ghost-claude run --coder claude --reviewer codex   # flips roles at run time without changing ghost-plan.yaml
@@ -53,6 +54,7 @@ Preview what would happen without touching anything:
 
 ```bash
 ghost-claude run --dry-run
+ghost-claude init --print-sources
 ```
 
 `ghost-claude init` bootstraps plan mode. The generated config points the runner at `ghost-plan.yaml`, not at `TODO.md`.
@@ -81,13 +83,13 @@ The default workflow scaffolded by `ghost-claude init` is plan-oriented and uses
 During `init`, ghost-claude bootstraps plan mode in two phases:
 
 1. Write `ghost-claude.yaml`.
-2. Ask Claude to read the provided source file or directory, or all regular files in the workspace directory when no source is provided, then generate `ghost-plan.yaml`, review it critically, and revise the plan. The bootstrap prompt keeps testing and cleanup expectations inline with implementation by default, and only asks for standalone tech-debt tasks when planning-time risk triggers apply, such as a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface. Those triggers describe expected breadth and discovered risk, not actual changed-file counts that only exist after execution.
+2. Ask Claude to read every resolved init source, then generate `ghost-plan.yaml`, review it critically, and revise the plan. You can supply sources with repeatable `--source` flags and still use a single positional source as an alias for one extra entry. When no source is provided, init falls back to all top-level regular files in the workspace directory. `ghost-claude init --print-sources` resolves that same source set and exits before writing config or prompting Claude. The bootstrap prompt keeps testing and cleanup expectations inline with implementation by default, and only asks for standalone tech-debt tasks when planning-time risk triggers apply, such as a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface. Those triggers describe expected breadth and discovered risk, not actual changed-file counts that only exist after execution.
 
 ## Subcommands
 
 ```
 ghost-claude run  [-config PATH] [-workspace DIR] [-dry-run] [-coder claude|codex] [-reviewer claude|codex]
-ghost-claude init [-config PATH] [-workspace DIR] [-source PATH] [-force] [SOURCE]
+ghost-claude init [-config PATH] [-workspace DIR] [--source PATH ...] [--print-sources] [-force] [SOURCE]
 ghost-claude restart [-config PATH] [-workspace DIR]
 ghost-claude task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
 ghost-claude help
@@ -233,7 +235,7 @@ The intended use is:
 - each task should end by leaving short notes about what it learned in that phase so the plan can be revised and rerun from a fresh environment
 - `ghost-claude restart` re-reads the current plan, source docs, and prior task notes, then rewrites `ghost-plan.yaml` for a fresh rerun with every task back at `todo`
 - `TODO.md` is still useful when you want legacy checklist mode or want to keep one constraints doc
-- `ghost-claude init` can generate the initial plan from a TODO file, a design doc, or a directory of source files
+- `ghost-claude init` can generate the initial plan from one or more `--source` inputs, the single positional source alias, or the workspace's top-level regular files when you omit sources
 - the scaffolded `init` prompt keeps testing and cleanup work inside implementation tasks unless explicit planning-time risk triggers justify a standalone tech-debt follow-up
 - those risk triggers are about expected breadth and discovered risk from the source inputs or prior notes, not runtime-observed changed-file counts
 - your external planner can still generate both files if you prefer that flow

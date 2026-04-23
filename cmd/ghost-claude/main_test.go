@@ -2,40 +2,54 @@ package main
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"ghost_claude/internal/config"
 )
 
-func TestResolveInitSourceArgFromFlag(t *testing.T) {
-	got, err := resolveInitSourceArg("DESIGN.md", nil)
+func TestResolveInitSourceArgsFromFlags(t *testing.T) {
+	got, err := resolveInitSourceArgs([]string{"DESIGN.md", "docs"}, nil)
 	if err != nil {
-		t.Fatalf("resolveInitSourceArg returned error: %v", err)
+		t.Fatalf("resolveInitSourceArgs returned error: %v", err)
 	}
-	if got != "DESIGN.md" {
-		t.Fatalf("expected DESIGN.md, got %q", got)
+	want := []string{"DESIGN.md", "docs"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
 	}
 }
 
-func TestResolveInitSourceArgFromPositionalArg(t *testing.T) {
-	got, err := resolveInitSourceArg("", []string{"docs"})
+func TestResolveInitSourceArgsFromPositionalArg(t *testing.T) {
+	got, err := resolveInitSourceArgs(nil, []string{"docs"})
 	if err != nil {
-		t.Fatalf("resolveInitSourceArg returned error: %v", err)
+		t.Fatalf("resolveInitSourceArgs returned error: %v", err)
 	}
-	if got != "docs" {
-		t.Fatalf("expected docs, got %q", got)
-	}
-}
-
-func TestResolveInitSourceArgRejectsMultipleSources(t *testing.T) {
-	if _, err := resolveInitSourceArg("", []string{"one", "two"}); err == nil {
-		t.Fatal("expected resolveInitSourceArg to reject multiple sources")
+	want := []string{"docs"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
 	}
 }
 
-func TestResolveInitSourceArgRejectsMixedFlagAndPositional(t *testing.T) {
-	if _, err := resolveInitSourceArg("DESIGN.md", []string{"docs"}); err == nil {
-		t.Fatal("expected resolveInitSourceArg to reject mixed flag and positional sources")
+func TestResolveInitSourceArgsIncludesPositionalAlias(t *testing.T) {
+	got, err := resolveInitSourceArgs([]string{"DESIGN.md"}, []string{"docs"})
+	if err != nil {
+		t.Fatalf("resolveInitSourceArgs returned error: %v", err)
+	}
+	want := []string{"DESIGN.md", "docs"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+}
+
+func TestResolveInitSourceArgsRejectsMultiplePositionals(t *testing.T) {
+	if _, err := resolveInitSourceArgs(nil, []string{"one", "two"}); err == nil {
+		t.Fatal("expected resolveInitSourceArgs to reject multiple positional sources")
+	}
+}
+
+func TestResolveInitSourceArgsRejectsEmptyFlag(t *testing.T) {
+	if _, err := resolveInitSourceArgs([]string{"  "}, nil); err == nil {
+		t.Fatal("expected resolveInitSourceArgs to reject an empty source flag")
 	}
 }
 

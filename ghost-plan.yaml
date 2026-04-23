@@ -77,7 +77,7 @@ tasks:
     - id: support-multiple-init-sources
       title: Add repeatable init sources and a source-preview path
       details: Replace the single-source init path with repeatable --source flags while preserving the current single positional source alias. Add a preview-oriented path so users can inspect the resolved source set before bootstrap writes config or prompts a planner.
-      status: todo
+      status: done
       workflow: implement
       deps:
         - clarify-init-planning-boundaries
@@ -96,6 +96,7 @@ tasks:
       verify_commands:
         - go test ./cmd/ghost-claude ./internal/bootstrap
       commit_message: 'feat: improve init source selection'
+      notes: Init now accepts repeated --source flags plus one positional alias, and --print-sources previews the resolved set before scaffold writes. Fresh reruns should rely on the same resolver, which sorts/dedupes sources and excludes generated ghost-claude.yaml and ghost-plan.yaml from default workspace scans.
     - id: add-init-planner-selection
       title: Let init choose the bootstrap planner
       details: Let users choose whether bootstrap planning runs through Claude or Codex, reusing existing agent naming and validation instead of hard-coding Claude in the initializer.
