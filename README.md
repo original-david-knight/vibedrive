@@ -81,7 +81,7 @@ The default workflow scaffolded by `ghost-claude init` is plan-oriented and uses
 During `init`, ghost-claude bootstraps plan mode in two phases:
 
 1. Write `ghost-claude.yaml`.
-2. Ask Claude to read the provided source file or directory, or all regular files in the workspace directory when no source is provided, then generate `ghost-plan.yaml`, review it critically, and revise the plan. The bootstrap prompt keeps testing and cleanup expectations inline with implementation by default, and only asks for standalone tech-debt tasks when explicit risk triggers apply, such as a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or broad expected file impact.
+2. Ask Claude to read the provided source file or directory, or all regular files in the workspace directory when no source is provided, then generate `ghost-plan.yaml`, review it critically, and revise the plan. The bootstrap prompt keeps testing and cleanup expectations inline with implementation by default, and only asks for standalone tech-debt tasks when planning-time risk triggers apply, such as a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface. Those triggers describe expected breadth and discovered risk, not actual changed-file counts that only exist after execution.
 
 ## Subcommands
 
@@ -234,7 +234,8 @@ The intended use is:
 - `ghost-claude restart` re-reads the current plan, source docs, and prior task notes, then rewrites `ghost-plan.yaml` for a fresh rerun with every task back at `todo`
 - `TODO.md` is still useful when you want legacy checklist mode or want to keep one constraints doc
 - `ghost-claude init` can generate the initial plan from a TODO file, a design doc, or a directory of source files
-- the scaffolded `init` prompt keeps testing and cleanup work inside implementation tasks unless explicit risk triggers justify a standalone tech-debt follow-up
+- the scaffolded `init` prompt keeps testing and cleanup work inside implementation tasks unless explicit planning-time risk triggers justify a standalone tech-debt follow-up
+- those risk triggers are about expected breadth and discovered risk from the source inputs or prior notes, not runtime-observed changed-file counts
 - your external planner can still generate both files if you prefer that flow
 
 ### Project fields
@@ -356,6 +357,7 @@ Prompts, `command`, `working_dir`, and `env` values are rendered with Go's `text
 - In the normal plan-based flow, the runner advances when the selected task changes status or notes in `ghost-plan.yaml`.
 - The generated config from `ghost-claude init` runs in plan mode, so `TODO.md` is not the live execution queue unless you deliberately switch back to legacy TODO mode.
 - `ghost-plan.yaml` is intended to be machine-owned state. The default workflow updates it through `ghost-claude task finalize`.
+- `ghost-claude task finalize` currently writes task status and notes back into `ghost-plan.yaml`, runs `verify_commands`, removes task artifacts, and commits staged changes when needed. It does not auto-insert follow-up tasks or enforce changed-file-count triggers.
 - In the default scaffold, task-result notes are intended to capture what the coder learned in that phase so you can revise the plan and rerun it from a fresh environment.
 - `ghost-claude task finalize` accepts `done`, `in_progress`, `blocked`, and `manual` task results. The scaffolded prompts only instruct the implementation steps to emit the first three.
 - `verify_commands` lets plan tasks declare deterministic checks for the exec finalizer to run before a task can stay `done`.

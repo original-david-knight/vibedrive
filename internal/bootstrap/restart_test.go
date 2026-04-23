@@ -77,6 +77,9 @@ tasks:
 	if !strings.Contains(client.prompts[0], "prior-run notes or planned work show unresolved follow-up") {
 		t.Fatalf("expected first prompt to preserve trigger-based debt follow-up from prior notes, got %q", client.prompts[0])
 	}
+	if !strings.Contains(client.prompts[0], "not as proof that replanning can observe actual changed-file counts or other finalize-time facts") {
+		t.Fatalf("expected first prompt to distinguish replanning heuristics from finalize-time facts, got %q", client.prompts[0])
+	}
 	if !strings.Contains(client.prompts[0], "do not restore or add standalone tech-debt tasks on a fixed schedule") {
 		t.Fatalf("expected first prompt to reject fixed tech-debt cadence, got %q", client.prompts[0])
 	}
@@ -91,6 +94,9 @@ tasks:
 	}
 	if !strings.Contains(client.prompts[1], "missing trigger-justified standalone tech-debt tasks") {
 		t.Fatalf("expected second prompt to review missing trigger-based tech-debt follow-up, got %q", client.prompts[1])
+	}
+	if !strings.Contains(client.prompts[1], "replanning can observe actual changed-file counts or other finalize-time facts") {
+		t.Fatalf("expected second prompt to review replanning-boundary violations, got %q", client.prompts[1])
 	}
 	if !strings.Contains(client.prompts[1], "standalone cleanup or test-coverage tasks") {
 		t.Fatalf("expected second prompt to review unnecessary standalone cleanup tasks, got %q", client.prompts[1])

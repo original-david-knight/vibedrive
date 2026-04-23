@@ -157,7 +157,8 @@ Requirements for the plan:
 - decompose the project into executable tasks that are sized for one focused implementation iteration and one coherent commit when practical
 - use workflow implement for coding work and workflow checkpoint for explicit full-suite or milestone verification gates
 - by default, keep testing, verification, and cleanup work attached to the implementation task that introduces the change instead of deferring it to a later cleanup pass
-- create a standalone implement tech-debt task only when the implementation task is expected to introduce a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or broad expected file impact that justifies dedicated follow-up work
+- create a standalone implement tech-debt task only when the implementation task is expected to introduce a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface that justifies dedicated follow-up work
+- describe those triggers as planning-time heuristics about expected breadth and discovered risk; do not claim the plan can know actual changed-file counts or other finalize-time facts before execution
 - when a standalone tech-debt task is justified, make the trigger explicit in the task details or acceptance criteria and scope the task to the follow-up testing, cleanup, hardening, or rollback-safety work that the risk requires
 - do not add standalone tech-debt tasks on a fixed schedule or as generic placeholders when the work can stay inside the implementation task
 - keep all generated tasks at status todo
@@ -188,7 +189,8 @@ Perform a critical review of the plan. Focus on:
 - missing checkpoints or verification work
 - missing or weak automated verification commands
 - tasks that defer routine testing, verification, or cleanup work that should stay attached to implementation
-- missing trigger-justified standalone tech-debt tasks for work expected to introduce a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or broad expected file impact
+- missing trigger-justified standalone tech-debt tasks for work expected to introduce a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface
+- wording that claims plan-time knowledge of actual changed-file counts or other finalize-time facts instead of framing them as expected breadth or discovered risk
 - standalone tech-debt tasks that lack an explicit trigger, duplicate routine inline work, or still assume a fixed cadence instead of a risk-based follow-up
 - tasks that do not end by capturing phase learnings for future replanning and fresh reruns
 - bad dependency ordering

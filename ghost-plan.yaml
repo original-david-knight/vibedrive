@@ -56,7 +56,7 @@ tasks:
     - id: clarify-init-planning-boundaries
       title: Clarify what init can predict versus what runtime can observe
       details: Make init and restart prompts describe plan-time heuristics honestly. They should talk about expected breadth and discovered risks, not claim init can know actual changed-file counts that are only observable at finalize time.
-      status: todo
+      status: done
       workflow: implement
       deps:
         - align-restart-with-triggered-debt-review
@@ -73,6 +73,7 @@ tasks:
       verify_commands:
         - go test ./internal/bootstrap ./internal/automation
       commit_message: 'docs: align init planning with current runtime limits'
+      notes: Init and restart prompts now describe debt triggers as planning-time expected breadth and discovered risk, not finalize-time file facts. README now states finalize records status and notes, runs verification, and does not auto-add follow-up tasks; keep future planning docs aligned with that runtime boundary.
     - id: support-multiple-init-sources
       title: Add repeatable init sources and a source-preview path
       details: Replace the single-source init path with repeatable --source flags while preserving the current single positional source alias. Add a preview-oriented path so users can inspect the resolved source set before bootstrap writes config or prompts a planner.

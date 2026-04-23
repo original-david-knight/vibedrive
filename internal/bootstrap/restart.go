@@ -95,7 +95,8 @@ Requirements for the revised plan:
 - keep tasks sized for one focused implementation iteration and one coherent commit when practical
 - keep workflow metadata and commit messages useful and specific
 - by default, keep testing, verification, and cleanup work attached to the implementation task that introduces the change instead of deferring it to a later cleanup pass
-- preserve or add a standalone implement tech-debt task only when the prior-run notes or planned work show unresolved follow-up testing, cleanup, hardening, or rollback-safety work tied to a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or broad expected file impact
+- preserve or add a standalone implement tech-debt task only when the prior-run notes or planned work show unresolved follow-up testing, cleanup, hardening, or rollback-safety work tied to a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface
+- describe those triggers from prior-run notes as discovered risks or expected breadth, not as proof that replanning can observe actual changed-file counts or other finalize-time facts unless a note recorded them explicitly
 - when a standalone tech-debt task is justified, make the trigger explicit in the task details or acceptance criteria and scope the task to the follow-up work that the risk requires
 - do not restore or add standalone tech-debt tasks on a fixed schedule or as generic placeholders when the work can stay inside the implementation task
 - do not silently drop manual, machine-specific, or external-dependency work; represent it in tasks/details so the plan remains faithful to the source requirements
@@ -130,7 +131,8 @@ Perform a critical review of the restarted plan. Focus on:
 - tasks that are too large, vague, or not committable
 - missing checkpoints or weak automated verification commands
 - tasks that defer routine testing, verification, or cleanup work that should stay attached to implementation
-- missing trigger-justified standalone tech-debt tasks when prior-run notes or planned work indicate unresolved follow-up testing, cleanup, hardening, or rollback-safety work for a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or broad expected file impact
+- missing trigger-justified standalone tech-debt tasks when prior-run notes or planned work indicate unresolved follow-up testing, cleanup, hardening, or rollback-safety work for a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface
+- wording that claims replanning can observe actual changed-file counts or other finalize-time facts instead of grounding follow-up work in prior notes, expected breadth, or discovered risk
 - standalone tech-debt tasks, especially standalone cleanup or test-coverage tasks, that lack an explicit trigger, duplicate routine inline work, or still assume a fixed cadence instead of a risk-based follow-up
 - tasks that do not end by capturing phase learnings for future replanning and fresh reruns
 - statuses that were not reset to todo
