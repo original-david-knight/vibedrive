@@ -94,10 +94,14 @@ Requirements for the revised plan:
 - add, split, reorder, or remove tasks when the previous run shows the old plan would repeat avoidable difficulty
 - keep tasks sized for one focused implementation iteration and one coherent commit when practical
 - keep workflow metadata and commit messages useful and specific
-- keep or restore the required 2 implement tech-debt tasks after every block of 5 significant dev steps: first a test-coverage pass, then a cleanup pass for stale, overcomplicated, duplicated, or unreadable code
+- by default, keep testing, verification, and cleanup work attached to the implementation task that introduces the change instead of deferring it to a later cleanup pass
+- preserve or add a standalone implement tech-debt task only when the prior-run notes or planned work show unresolved follow-up testing, cleanup, hardening, or rollback-safety work tied to a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or broad expected file impact
+- when a standalone tech-debt task is justified, make the trigger explicit in the task details or acceptance criteria and scope the task to the follow-up work that the risk requires
+- do not restore or add standalone tech-debt tasks on a fixed schedule or as generic placeholders when the work can stay inside the implementation task
 - do not silently drop manual, machine-specific, or external-dependency work; represent it in tasks/details so the plan remains faithful to the source requirements
 - include explicit checkpoint tasks wherever the requirements call for them
 - strengthen weak or missing verify_commands whenever a deterministic automated check exists
+- for every task, make the last acceptance item instruct the coding agent to leave short notes about what it learned in that phase, including discoveries or plan adjustments that matter if the plan is rerun from a fresh environment
 - after incorporating the prior-run learnings, clear stale task notes from the previous run
 - reset every task status to todo so the project can restart from a fresh environment
 - keep valid YAML and quote any string list item that contains a colon followed by a space
@@ -125,7 +129,10 @@ Perform a critical review of the restarted plan. Focus on:
 - task sequencing or missing preparatory work that would recreate the same difficulties
 - tasks that are too large, vague, or not committable
 - missing checkpoints or weak automated verification commands
-- missing or incorrect insertion of the required 2 tech-debt tasks after each block of 5 significant dev steps
+- tasks that defer routine testing, verification, or cleanup work that should stay attached to implementation
+- missing trigger-justified standalone tech-debt tasks when prior-run notes or planned work indicate unresolved follow-up testing, cleanup, hardening, or rollback-safety work for a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or broad expected file impact
+- standalone tech-debt tasks, especially standalone cleanup or test-coverage tasks, that lack an explicit trigger, duplicate routine inline work, or still assume a fixed cadence instead of a risk-based follow-up
+- tasks that do not end by capturing phase learnings for future replanning and fresh reruns
 - statuses that were not reset to todo
 - leftover task notes from the old run that should have been cleared for the fresh restart
 - omitted or weakened requirements from the source inputs

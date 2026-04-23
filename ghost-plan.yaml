@@ -36,7 +36,7 @@ tasks:
     - id: align-restart-with-triggered-debt-review
       title: Mirror the trigger-based debt policy in restart replanning
       details: Carry the same trigger-based debt policy through restart so replanning preserves meaningful follow-up work from prior notes without reintroducing a scheduled cleanup rhythm.
-      status: todo
+      status: done
       workflow: implement
       deps:
         - trigger-based-init-policy
@@ -52,6 +52,7 @@ tasks:
       verify_commands:
         - go test ./internal/bootstrap
       commit_message: 'feat: apply trigger-based debt review to restart'
+      notes: Restart prompts now preserve trigger-backed debt follow-up from prior notes, reject fixed cleanup cadence, and keep future phase-learning acceptance. If rerun fresh, keep the restart tests asserting stale notes clear and standalone cleanup tasks stay trigger-justified.
     - id: clarify-init-planning-boundaries
       title: Clarify what init can predict versus what runtime can observe
       details: Make init and restart prompts describe plan-time heuristics honestly. They should talk about expected breadth and discovered risks, not claim init can know actual changed-file counts that are only observable at finalize time.
