@@ -310,36 +310,23 @@ func (r *Runner) createCodexSession() (*codexcli.Session, error) {
 func (r *Runner) runSteps(ctx context.Context, steps []config.Step, data TemplateData) error {
 	var sharedSession *claude.Session
 	var sharedCodexSession *codexcli.Session
+	type sessionCloser struct {
+		label string
+		close func() error
+	}
+	var sharedClosers []sessionCloser
 	closeSharedSession := func(runErr error) error {
-		if sharedSession == nil {
-			if sharedCodexSession == nil {
-				return runErr
-			}
-		}
-
-		if sharedCodexSession != nil {
-			closeErr := r.codex.Close(sharedCodexSession)
+		for i := len(sharedClosers) - 1; i >= 0; i-- {
+			closeErr := sharedClosers[i].close()
 			if runErr != nil {
 				if closeErr != nil {
-					return fmt.Errorf("%w; also failed to close codex session: %v", runErr, closeErr)
+					return fmt.Errorf("%w; also failed to close %s session: %v", runErr, sharedClosers[i].label, closeErr)
 				}
-				return runErr
+				continue
 			}
 			if closeErr != nil {
 				return closeErr
 			}
-		}
-
-		if sharedSession != nil {
-			closeErr := r.claude.Close(sharedSession)
-			if runErr != nil {
-				if closeErr != nil {
-					return fmt.Errorf("%w; also failed to close claude session: %v", runErr, closeErr)
-				}
-				return runErr
-			}
-
-			return closeErr
 		}
 
 		return runErr
@@ -379,6 +366,13 @@ func (r *Runner) runSteps(ctx context.Context, steps []config.Step, data Templat
 					if err != nil {
 						return err
 					}
+					sessionToClose := sharedSession
+					sharedClosers = append(sharedClosers, sessionCloser{
+						label: "claude",
+						close: func() error {
+							return r.claude.Close(sessionToClose)
+						},
+					})
 					session = sharedSession
 				default:
 					session = sharedSession
@@ -400,6 +394,13 @@ func (r *Runner) runSteps(ctx context.Context, steps []config.Step, data Templat
 					if err != nil {
 						return err
 					}
+					sessionToClose := sharedCodexSession
+					sharedClosers = append(sharedClosers, sessionCloser{
+						label: "codex",
+						close: func() error {
+							return r.codex.Close(sessionToClose)
+						},
+					})
 					codexSession = sharedCodexSession
 				default:
 					codexSession = sharedCodexSession

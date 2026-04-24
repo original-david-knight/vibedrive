@@ -22,6 +22,8 @@ type fakeAgent struct {
 	closedSessionID []string
 	todoPath        string
 	planPath        string
+	closeEvents     *[]string
+	closeLabel      string
 }
 
 func (f *fakeAgent) RunPrompt(_ context.Context, session *claude.Session, prompt string) error {
@@ -48,6 +50,13 @@ func (f *fakeAgent) RunPrompt(_ context.Context, session *claude.Session, prompt
 
 func (f *fakeAgent) Close(session *claude.Session) error {
 	f.closedSessionID = append(f.closedSessionID, session.ID)
+	if f.closeEvents != nil {
+		label := f.closeLabel
+		if label == "" {
+			label = "claude"
+		}
+		*f.closeEvents = append(*f.closeEvents, label)
+	}
 	return nil
 }
 
@@ -60,6 +69,8 @@ type fakeCodex struct {
 	closedSessionID []string
 	todoPath        string
 	planPath        string
+	closeEvents     *[]string
+	closeLabel      string
 }
 
 func (f *fakeCodex) RunPrompt(_ context.Context, session *codexcli.Session, prompt string) error {
@@ -85,6 +96,13 @@ func (f *fakeCodex) RunPrompt(_ context.Context, session *codexcli.Session, prom
 
 func (f *fakeCodex) Close(_ *codexcli.Session) error {
 	f.closedSessionID = append(f.closedSessionID, "closed")
+	if f.closeEvents != nil {
+		label := f.closeLabel
+		if label == "" {
+			label = "codex"
+		}
+		*f.closeEvents = append(*f.closeEvents, label)
+	}
 	return nil
 }
 
@@ -690,6 +708,74 @@ tasks:
 	}
 	if got := strings.Join(claudeAgent.prompts, "\n"); got != "review scaffold" {
 		t.Fatalf("unexpected reviewer prompts:\n%s", got)
+	}
+}
+
+func TestRunClosesSharedSessionsInReverseCreationOrder(t *testing.T) {
+	dir := t.TempDir()
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
+
+	content := `project:
+  name: demo
+tasks:
+  - id: scaffold
+    title: Scaffold repo
+    workflow: implement
+    status: todo
+`
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	cfg := &config.Config{
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
+		Workspace:            dir,
+		PlanFile:             planPath,
+		Coder:                config.AgentCodex,
+		Reviewer:             config.AgentClaude,
+		MaxStalledIterations: 1,
+		Claude: config.ClaudeConfig{
+			SessionStrategy: config.SessionStrategySessionID,
+		},
+		DefaultWorkflow: "implement",
+		Workflows: map[string]config.Workflow{
+			"implement": {
+				Steps: []config.Step{
+					{Name: "execute", Type: config.StepTypeAgent, Actor: config.StepActorCoder, Prompt: "analyze {{ .Task.ID }}"},
+					{Name: "review", Type: config.StepTypeAgent, Actor: config.StepActorReviewer, Prompt: "review {{ .Task.ID }}"},
+					{Name: "finish", Type: config.StepTypeAgent, Actor: config.StepActorCoder, Prompt: "finish task {{ .Task.ID }}"},
+				},
+			},
+		},
+	}
+
+	closeEvents := []string{}
+	claudeAgent := &fakeAgent{planPath: planPath, closeEvents: &closeEvents}
+	codexAgent := &fakeCodex{planPath: planPath, closeEvents: &closeEvents}
+
+	r := &Runner{
+		cfg:    cfg,
+		stdout: io.Discard,
+		stderr: io.Discard,
+		claude: claudeAgent,
+		codex:  codexAgent,
+		newSession: func(_ string) (*claude.Session, error) {
+			return &claude.Session{
+				Strategy: config.SessionStrategySessionID,
+				ID:       "session-1",
+			}, nil
+		},
+		newCodexSession: func() (*codexcli.Session, error) {
+			return &codexcli.Session{}, nil
+		},
+	}
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if got := strings.Join(closeEvents, ","); got != "claude,codex" {
+		t.Fatalf("expected shared sessions to close in reverse creation order, got %q", got)
 	}
 }
 
