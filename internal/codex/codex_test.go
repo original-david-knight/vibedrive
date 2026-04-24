@@ -140,30 +140,30 @@ func TestNewDefaultsToTUIWhenNoExecSubcommandIsPresent(t *testing.T) {
 }
 
 func TestTitleMonitorClassifiesIdleAndBusyTitles(t *testing.T) {
-	monitor := newTitleMonitor("/tmp/ghost_claude")
+	monitor := newTitleMonitor("/tmp/vibedrive")
 
-	if state, ok := monitor.classifyTitle("ghost_claude"); !ok || state != "idle" {
+	if state, ok := monitor.classifyTitle("vibedrive"); !ok || state != "idle" {
 		t.Fatalf("expected idle title classification, got state=%q ok=%v", state, ok)
 	}
-	if state, ok := monitor.classifyTitle("⠋ ghost_claude"); !ok || state != "busy" {
+	if state, ok := monitor.classifyTitle("⠋ vibedrive"); !ok || state != "busy" {
 		t.Fatalf("expected busy title classification, got state=%q ok=%v", state, ok)
 	}
 }
 
 func TestTitleMonitorWaitsForBusyThenIdleBeforeStartupReady(t *testing.T) {
-	monitor := newTitleMonitor("/tmp/ghost_claude")
+	monitor := newTitleMonitor("/tmp/vibedrive")
 
-	monitor.consume(titleChunk("ghost_claude"))
+	monitor.consume(titleChunk("vibedrive"))
 	if monitor.snapshot().readyForPrompt() {
 		t.Fatal("expected initial idle title to be insufficient for startup readiness")
 	}
 
-	monitor.consume(titleChunk("⠋ ghost_claude"))
+	monitor.consume(titleChunk("⠋ vibedrive"))
 	if monitor.snapshot().readyForPrompt() {
 		t.Fatal("expected busy title to remain not ready")
 	}
 
-	monitor.consume(titleChunk("ghost_claude"))
+	monitor.consume(titleChunk("vibedrive"))
 	if !monitor.snapshot().readyForPrompt() {
 		t.Fatal("expected idle after busy to mark startup ready")
 	}

@@ -9,10 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"ghost_claude/internal/claude"
-	codexcli "ghost_claude/internal/codex"
-	"ghost_claude/internal/config"
-	"ghost_claude/internal/scaffold"
+	"vibedrive/internal/claude"
+	codexcli "vibedrive/internal/codex"
+	"vibedrive/internal/config"
+	"vibedrive/internal/scaffold"
 )
 
 type Initializer struct {
@@ -69,7 +69,7 @@ type sourceSpec struct {
 	Files []string
 }
 
-const defaultPlanFile = "ghost-plan.yaml"
+const defaultPlanFile = "vibedrive-plan.yaml"
 
 func New(stdout, stderr io.Writer) *Initializer {
 	return &Initializer{
@@ -218,7 +218,7 @@ func renderCreatePlanPrompt(cfg *config.Config, source sourceSpec) string {
 	sourceRefs := renderSourceRefs(cfg.Workspace, source.Files)
 
 	return strings.TrimSpace(fmt.Sprintf(`
-Bootstrap ghost-claude plan mode for this repository.
+Bootstrap vibedrive plan mode for this repository.
 
 Use these project source inputs as the primary requirements, constraints, design, and success-criteria materials:
 %s

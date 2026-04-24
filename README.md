@@ -1,8 +1,8 @@
-# ghost-claude
+# vibedrive
 
-`ghost-claude` is a terminal-native Go runner that drives Claude Code and Codex through a configurable workflow.
+`vibedrive` is a terminal-native Go runner that drives Claude Code and Codex through a configurable workflow.
 
-Its primary execution queue is `ghost-plan.yaml`: a machine-readable task graph that the runner reads, updates, and advances automatically.
+Its primary execution queue is `vibedrive-plan.yaml`: a machine-readable task graph that the runner reads, updates, and advances automatically.
 
 Legacy TODO mode still exists for compatibility, but the current scaffolded flow does not step through `TODO.md` unless you intentionally omit `plan_file` and configure checklist-based steps.
 
@@ -13,61 +13,61 @@ It launches Claude's real fullscreen TUI inside a PTY when Claude-backed steps r
 - Go 1.26+ (the version declared in `go.mod` is currently `1.26.0`)
 - The `claude` CLI installed and on your `$PATH` ([Claude Code](https://docs.claude.com/en/docs/claude-code))
 - The `codex` CLI installed and on your `$PATH` for the default scaffolded implementation flow
-- A `ghost-plan.yaml` file with machine-readable tasks for normal operation
+- A `vibedrive-plan.yaml` file with machine-readable tasks for normal operation
 - Optionally, a `TODO.md` file with GitHub-style checkboxes if you intentionally want legacy checklist mode or want to use it as a planning input
 
 ## Install
 
 ```bash
-go install ./cmd/ghost-claude
+go install ./cmd/vibedrive
 ```
 
 Or run without installing:
 
 ```bash
-go run ./cmd/ghost-claude <subcommand>
+go run ./cmd/vibedrive <subcommand>
 ```
 
 ## Quick start
 
-From inside the repo you want ghost-claude to work on:
+From inside the repo you want vibedrive to work on:
 
 ```bash
-ghost-claude init              # writes ghost-claude.yaml, resolves top-level regular files as sources by default, then asks the selected bootstrap planner to generate and review ghost-plan.yaml
-ghost-claude init --planner codex   # bootstrap the plan with Codex instead of the default Claude planner
-ghost-claude init DESIGN.md    # single positional source alias
-ghost-claude init --source DESIGN.md --source docs/specs
-ghost-claude init --source DESIGN.md --source docs/specs --print-sources   # preview resolved sources without writing config or plan
-ghost-claude restart           # replans from prior task notes, then resets ghost-plan.yaml to a fresh-run state
-ghost-claude run    # starts the loop with coder=codex and reviewer=claude
-ghost-claude run --coder claude --reviewer codex   # flips roles at run time without changing ghost-plan.yaml
-ghost-claude run --coder codex --reviewer codex    # same agent can both code and review
+vibedrive init              # writes vibedrive.yaml, resolves top-level regular files as sources by default, then asks the selected bootstrap planner to generate and review vibedrive-plan.yaml
+vibedrive init --planner codex   # bootstrap the plan with Codex instead of the default Claude planner
+vibedrive init DESIGN.md    # single positional source alias
+vibedrive init --source DESIGN.md --source docs/specs
+vibedrive init --source DESIGN.md --source docs/specs --print-sources   # preview resolved sources without writing config or plan
+vibedrive restart           # replans from prior task notes, then resets vibedrive-plan.yaml to a fresh-run state
+vibedrive run    # starts the loop with coder=codex and reviewer=claude
+vibedrive run --coder claude --reviewer codex   # flips roles at run time without changing vibedrive-plan.yaml
+vibedrive run --coder codex --reviewer codex    # same agent can both code and review
 ```
 
 Target a different repo without `cd`:
 
 ```bash
-ghost-claude init --workspace /path/to/repo
-ghost-claude restart --workspace /path/to/repo
-ghost-claude run  --workspace /path/to/repo
+vibedrive init --workspace /path/to/repo
+vibedrive restart --workspace /path/to/repo
+vibedrive run  --workspace /path/to/repo
 ```
 
 Preview what would happen without touching anything:
 
 ```bash
-ghost-claude run --dry-run
-ghost-claude init --print-sources
-ghost-claude init --print-sources --source DESIGN.md --source docs/specs
+vibedrive run --dry-run
+vibedrive init --print-sources
+vibedrive init --print-sources --source DESIGN.md --source docs/specs
 ```
 
-`ghost-claude init` bootstraps plan mode. The generated config points the runner at `ghost-plan.yaml`, not at `TODO.md`.
+`vibedrive init` bootstraps plan mode. The generated config points the runner at `vibedrive-plan.yaml`, not at `TODO.md`.
 
 ## How the loop works
 
 For each iteration:
 
 1. Select the next work item.
-   In the default and current flow, this is the first ready task in `ghost-plan.yaml`, with `in_progress` tasks preferred over `todo` tasks and dependencies respected.
+   In the default and current flow, this is the first ready task in `vibedrive-plan.yaml`, with `in_progress` tasks preferred over `todo` tasks and dependencies respected.
    Legacy TODO mode instead uses the first unchecked `- [ ]` item in `TODO.md`.
 2. Start a fresh Claude session when a Claude step needs one.
 3. Run every configured step in order. Claude steps share one session for the work item by default, but `fresh_session: true` isolates a Claude step in its own session. Codex steps run non-interactively.
@@ -76,41 +76,41 @@ For each iteration:
 
 The runner stops when there is no work left, when `max_iterations` is reached, or when the same item stalls `max_stalled_iterations` times in a row.
 
-The default workflow scaffolded by `ghost-claude init` is plan-oriented and uses `ghost-plan.yaml` as the execution queue:
+The default workflow scaffolded by `vibedrive init` is plan-oriented and uses `vibedrive-plan.yaml` as the execution queue:
 
 1. Execute the selected task with the current coder while preserving the plan's hard constraints.
 2. Ask the current reviewer to review the changes and write a structured review artifact.
 3. Run a second coder step that reads the review artifact and fixes any actionable findings.
-4. Run the task's configured `verify_commands`, apply the JSON task result to `ghost-plan.yaml`, and commit the iteration with an exec step.
+4. Run the task's configured `verify_commands`, apply the JSON task result to `vibedrive-plan.yaml`, and commit the iteration with an exec step.
 
-During `init`, ghost-claude bootstraps plan mode in two phases:
+During `init`, vibedrive bootstraps plan mode in two phases:
 
-1. Write `ghost-claude.yaml`.
-2. Ask the selected bootstrap planner to read every resolved init source, then generate `ghost-plan.yaml`, review it critically, and revise the plan. `ghost-claude init` defaults to `--planner claude`, and `--planner codex` switches bootstrap planning to Codex without changing the runtime coder/reviewer defaults used by `run`. You can supply sources with repeatable `--source` flags and still use a single positional source as an alias for one extra entry. When no source is provided, init falls back to all top-level regular files in the workspace directory. `ghost-claude init --print-sources` resolves that same deduped, sorted source set in deterministic order and exits before writing config or prompting the planner. The bootstrap prompt keeps testing and cleanup expectations inline with implementation by default, and only asks for standalone tech-debt tasks when planning-time risk triggers apply, such as a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface. Those triggers describe expected breadth and discovered risk, not actual changed-file counts that only exist after execution.
+1. Write `vibedrive.yaml`.
+2. Ask the selected bootstrap planner to read every resolved init source, then generate `vibedrive-plan.yaml`, review it critically, and revise the plan. `vibedrive init` defaults to `--planner claude`, and `--planner codex` switches bootstrap planning to Codex without changing the runtime coder/reviewer defaults used by `run`. You can supply sources with repeatable `--source` flags and still use a single positional source as an alias for one extra entry. When no source is provided, init falls back to all top-level regular files in the workspace directory. `vibedrive init --print-sources` resolves that same deduped, sorted source set in deterministic order and exits before writing config or prompting the planner. The bootstrap prompt keeps testing and cleanup expectations inline with implementation by default, and only asks for standalone tech-debt tasks when planning-time risk triggers apply, such as a new abstraction, risky temporary coupling or workaround, destructive or stateful behavior, or a broad expected implementation surface. Those triggers describe expected breadth and discovered risk, not actual changed-file counts that only exist after execution.
 
 ## Subcommands
 
 ```
-ghost-claude run  [-config PATH] [-workspace DIR] [-dry-run] [-coder claude|codex] [-reviewer claude|codex]
-ghost-claude init [-config PATH] [-workspace DIR] [--source PATH ...] [--planner claude|codex] [--print-sources] [-force] [SOURCE]
-ghost-claude restart [-config PATH] [-workspace DIR]
-ghost-claude task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
-ghost-claude help
+vibedrive run  [-config PATH] [-workspace DIR] [-dry-run] [-coder claude|codex] [-reviewer claude|codex]
+vibedrive init [-config PATH] [-workspace DIR] [--source PATH ...] [--planner claude|codex] [--print-sources] [-force] [SOURCE]
+vibedrive restart [-config PATH] [-workspace DIR]
+vibedrive task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
+vibedrive help
 ```
 
-If you omit the subcommand, `ghost-claude` behaves like `run`.
+If you omit the subcommand, `vibedrive` behaves like `run`.
 
-When `-workspace` is set, the default config path becomes `<workspace>/ghost-claude.yaml` and every relative path in the config resolves against that workspace.
+When `-workspace` is set, the default config path becomes `<workspace>/vibedrive.yaml` and every relative path in the config resolves against that workspace.
 
-In the generated config, `plan_file` is set, so `run` executes from `ghost-plan.yaml`. It does not read `TODO.md` as the task queue unless you reconfigure it into legacy TODO mode.
+In the generated config, `plan_file` is set, so `run` executes from `vibedrive-plan.yaml`. It does not read `TODO.md` as the task queue unless you reconfigure it into legacy TODO mode.
 
 ## Config
 
-The runner reads `ghost-claude.yaml` by default. `ghost-claude init` writes a complete scaffold matching [`ghost-claude.example.yaml`](ghost-claude.example.yaml). Shortened plan-mode example:
+The runner reads `vibedrive.yaml` by default. `vibedrive init` writes a complete scaffold matching [`vibedrive.example.yaml`](vibedrive.example.yaml). Shortened plan-mode example:
 
 ```yaml
 workspace: .
-plan_file: ghost-plan.yaml
+plan_file: vibedrive-plan.yaml
 max_iterations: 0
 max_stalled_iterations: 2
 default_workflow: implement
@@ -188,9 +188,9 @@ workflows:
 
 Legacy TODO mode still works, but it is no longer the default or recommended flow: omit `plan_file` and `workflows`, keep `steps`, and drive progress by editing the first unchecked checkbox in `TODO.md`.
 
-### `ghost-plan.yaml`
+### `vibedrive-plan.yaml`
 
-Plan mode uses a machine-readable task file. The repository ships a complete starter in [`ghost-plan.example.yaml`](ghost-plan.example.yaml). Minimal example:
+Plan mode uses a machine-readable task file. The repository ships a complete starter in [`vibedrive-plan.example.yaml`](vibedrive-plan.example.yaml). Minimal example:
 
 ```yaml
 project:
@@ -233,12 +233,12 @@ tasks:
 
 The intended use is:
 
-- `ghost-plan.yaml` is machine-owned execution state
-- the runner normally advances by updating task status and notes in `ghost-plan.yaml`, not by checking boxes in `TODO.md`
+- `vibedrive-plan.yaml` is machine-owned execution state
+- the runner normally advances by updating task status and notes in `vibedrive-plan.yaml`, not by checking boxes in `TODO.md`
 - each task should end by leaving short notes about what it learned in that phase so the plan can be revised and rerun from a fresh environment
-- `ghost-claude restart` re-reads the current plan, source docs, and prior task notes, then rewrites `ghost-plan.yaml` for a fresh rerun with every task back at `todo`
+- `vibedrive restart` re-reads the current plan, source docs, and prior task notes, then rewrites `vibedrive-plan.yaml` for a fresh rerun with every task back at `todo`
 - `TODO.md` is still useful when you want legacy checklist mode or want to keep one constraints doc
-- `ghost-claude init` can generate the initial plan from one or more `--source` inputs, the single positional source alias, or the workspace's top-level regular files when you omit sources
+- `vibedrive init` can generate the initial plan from one or more `--source` inputs, the single positional source alias, or the workspace's top-level regular files when you omit sources
 - the scaffolded `init` prompt keeps testing and cleanup work inside implementation tasks unless explicit planning-time risk triggers justify a standalone tech-debt follow-up
 - those risk triggers are about expected breadth and discovered risk from the source inputs or prior notes, not runtime-observed changed-file counts
 - your external planner can still generate both files if you prefer that flow
@@ -260,7 +260,7 @@ The intended use is:
 | `title`           | Required short human-readable task title.                                               |
 | `details`         | Optional implementation notes or extra context.                                         |
 | `status`          | Required execution state. See supported values below.                                   |
-| `workflow`        | Optional workflow name from `ghost-claude.yaml`. Falls back to `default_workflow`.      |
+| `workflow`        | Optional workflow name from `vibedrive.yaml`. Falls back to `default_workflow`.      |
 | `kind`            | Optional planner metadata. Stored in the plan, but not interpreted by the runner today. |
 | `deps`            | Optional list of task IDs that must be `done` before this task is ready.                |
 | `context_files`   | Optional repo-relative files the task should pay attention to.                          |
@@ -296,7 +296,7 @@ The intended use is:
 | Field              | Default      | Meaning                                                                 |
 | ------------------ | ------------ | ----------------------------------------------------------------------- |
 | `command`          | `claude`     | Executable to launch.                                                   |
-| `args`             | `["--effort", "max", "--permission-mode", "bypassPermissions"]` | Extra CLI flags passed to Claude. If you set custom args without an explicit `--effort`, ghost-claude appends `--effort max`. If you do not set a Claude permission flag, ghost-claude appends `--permission-mode bypassPermissions` so agent steps do not stop on approval prompts. |
+| `args`             | `["--effort", "max", "--permission-mode", "bypassPermissions"]` | Extra CLI flags passed to Claude. If you set custom args without an explicit `--effort`, vibedrive appends `--effort max`. If you do not set a Claude permission flag, vibedrive appends `--permission-mode bypassPermissions` so agent steps do not stop on approval prompts. |
 | `transport`        | `tui`        | `tui` drives the fullscreen UI inside a PTY. `print` uses `--print`.   |
 | `startup_timeout`  | `30s`        | How long to wait for Claude to become ready before failing.             |
 | `session_strategy` | `session_id` | `session_id` starts a new session per item; `continue` resumes.         |
@@ -310,9 +310,9 @@ The intended use is:
 | `startup_timeout` | `30s`                                                                   | How long to wait for Codex to become ready in `tui` mode before failing. |
 | `args`            | `["--dangerously-bypass-approvals-and-sandbox", "-c", "model_reasoning_effort=\"xhigh\""]` | Extra CLI flags passed to Codex before the rendered prompt.             |
 
-ghost-claude prepends `--dangerously-bypass-approvals-and-sandbox` to Codex invocations so the agent never pauses for approval prompts. If you set custom `codex.args` without an explicit `model_reasoning_effort=...` override, ghost-claude appends `-c model_reasoning_effort="xhigh"`.
+vibedrive prepends `--dangerously-bypass-approvals-and-sandbox` to Codex invocations so the agent never pauses for approval prompts. If you set custom `codex.args` without an explicit `model_reasoning_effort=...` override, vibedrive appends `-c model_reasoning_effort="xhigh"`.
 
-In `tui` mode, Codex runs the same fullscreen terminal UI you get from invoking `codex` yourself, and ghost-claude reuses that PTY session across steps for the current item. In `exec` mode, ghost-claude enables Codex's JSON event stream internally and renders a filtered terminal view: the runner prints the rendered step instructions first, then agent messages, command names, and file-change summaries stay visible, while command output, raw file reads, and diff bodies are suppressed. If you explicitly include `--json` in `codex.args`, ghost-claude leaves the stream untouched.
+In `tui` mode, Codex runs the same fullscreen terminal UI you get from invoking `codex` yourself, and vibedrive reuses that PTY session across steps for the current item. In `exec` mode, vibedrive enables Codex's JSON event stream internally and renders a filtered terminal view: the runner prints the rendered step instructions first, then agent messages, command names, and file-change summaries stay visible, while command output, raw file reads, and diff bodies are suppressed. If you explicitly include `--json` in `codex.args`, vibedrive leaves the stream untouched.
 
 ### Step fields
 
@@ -352,29 +352,29 @@ Prompts, `command`, `working_dir`, and `env` values are rendered with Go's `text
 - `{{ .NextTodo.Line }}` — 1-indexed line number in `TODO.md`
 - `{{ .NextTodo.Raw }}` — the entire line, including the checkbox
 - `{{ .NextTodo.Text }}` — just the task description
-- `{{ .Plan }}` — parsed `ghost-plan.yaml`
+- `{{ .Plan }}` — parsed `vibedrive-plan.yaml`
 - `{{ .Task }}` — selected plan task in plan mode
 - `{{ .Now }}` — current time
 
 ## Notes & gotchas
 
 - In TODO mode, the runner only advances when the first incomplete checkbox in the TODO file changes.
-- In the normal plan-based flow, the runner advances when the selected task changes status or notes in `ghost-plan.yaml`.
-- The generated config from `ghost-claude init` runs in plan mode, so `TODO.md` is not the live execution queue unless you deliberately switch back to legacy TODO mode.
-- `ghost-plan.yaml` is intended to be machine-owned state. The default workflow updates it through `ghost-claude task finalize`.
-- `ghost-claude task finalize` currently writes task status and notes back into `ghost-plan.yaml`, runs `verify_commands`, removes task artifacts, and commits staged changes when needed. It does not auto-insert follow-up tasks or enforce changed-file-count triggers.
+- In the normal plan-based flow, the runner advances when the selected task changes status or notes in `vibedrive-plan.yaml`.
+- The generated config from `vibedrive init` runs in plan mode, so `TODO.md` is not the live execution queue unless you deliberately switch back to legacy TODO mode.
+- `vibedrive-plan.yaml` is intended to be machine-owned state. The default workflow updates it through `vibedrive task finalize`.
+- `vibedrive task finalize` currently writes task status and notes back into `vibedrive-plan.yaml`, runs `verify_commands`, removes task artifacts, and commits staged changes when needed. It does not auto-insert follow-up tasks or enforce changed-file-count triggers.
 - In the default scaffold, task-result notes are intended to capture what the coder learned in that phase so you can revise the plan and rerun it from a fresh environment.
-- `ghost-claude task finalize` accepts `done`, `in_progress`, `blocked`, and `manual` task results. The scaffolded prompts only instruct the implementation steps to emit the first three.
+- `vibedrive task finalize` accepts `done`, `in_progress`, `blocked`, and `manual` task results. The scaffolded prompts only instruct the implementation steps to emit the first three.
 - `verify_commands` lets plan tasks declare deterministic checks for the exec finalizer to run before a task can stay `done`.
 - If a task result says `done` and a `verify_commands` command fails, the finalizer rewrites the task to `in_progress`, appends a verification-failure note, removes the result file, and returns an error without committing.
-- `ghost-claude task finalize` also removes the default peer-review artifact for the task so it does not get staged into the commit.
+- `vibedrive task finalize` also removes the default peer-review artifact for the task so it does not get staged into the commit.
 - `required_outputs` lets a step declare files it must leave behind. The runner creates parent directories before the step runs and fails the step immediately if the files are still missing afterward.
 - The finalizer stages changes with `git add -A` and only creates a commit when something is actually staged.
 - Codex steps use native TUI mode by default, so the app now shows the same Codex interface you get from running `codex` directly.
-- If you prefer the older non-interactive behavior, set `codex.transport: exec`. In that mode, ghost-claude suppresses raw file-read and diff payloads but still shows the rest of Codex's progress.
+- If you prefer the older non-interactive behavior, set `codex.transport: exec`. In that mode, vibedrive suppresses raw file-read and diff payloads but still shows the rest of Codex's progress.
 - `--coder` and `--reviewer` are independent. You can set them to different agents or to the same agent.
 - Agent role selection is runtime-only. Use `--coder` and `--reviewer` to override the defaults of coder=`codex` and reviewer=`claude`.
-- `ghost-claude init` uses the selected bootstrap planner and that planner's configured transport. With the default `--planner claude` and Claude `tui` transport, you can watch plan generation and review live in your terminal. `--planner codex` bootstraps through the configured Codex client instead.
+- `vibedrive init` uses the selected bootstrap planner and that planner's configured transport. With the default `--planner claude` and Claude `tui` transport, you can watch plan generation and review live in your terminal. `--planner codex` bootstraps through the configured Codex client instead.
 - In TUI mode, YAML multiline prompts are flattened into one submitted message, because real newlines would be interpreted as separate messages by Claude's composer.
 - In a fresh workspace, the runner auto-confirms Claude's trust dialog so the loop can start unattended.
 - TUI automation detects "Claude is idle" from terminal-title transitions. If a future Claude release changes that behavior, the detector may need updating.

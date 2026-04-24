@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"ghost_claude/internal/config"
+	"vibedrive/internal/config"
 )
 
 func TestResolveInitSourceArgsFromFlags(t *testing.T) {
@@ -55,12 +55,12 @@ func TestResolveInitSourceArgsRejectsEmptyFlag(t *testing.T) {
 }
 
 func TestResolveConfigPathWithoutWorkspace(t *testing.T) {
-	got, err := resolveConfigPath("ghost-claude.yaml", "")
+	got, err := resolveConfigPath("vibedrive.yaml", "")
 	if err != nil {
 		t.Fatalf("resolveConfigPath returned error: %v", err)
 	}
 
-	want, err := filepath.Abs("ghost-claude.yaml")
+	want, err := filepath.Abs("vibedrive.yaml")
 	if err != nil {
 		t.Fatalf("filepath.Abs returned error: %v", err)
 	}
@@ -73,19 +73,19 @@ func TestResolveConfigPathWithoutWorkspace(t *testing.T) {
 func TestResolveConfigPathWithWorkspace(t *testing.T) {
 	dir := t.TempDir()
 
-	got, err := resolveConfigPath("ghost-claude.yaml", dir)
+	got, err := resolveConfigPath("vibedrive.yaml", dir)
 	if err != nil {
 		t.Fatalf("resolveConfigPath returned error: %v", err)
 	}
 
-	want := filepath.Join(dir, "ghost-claude.yaml")
+	want := filepath.Join(dir, "vibedrive.yaml")
 	if got != want {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
 
 func TestResolveConfigPathKeepsAbsoluteConfigPath(t *testing.T) {
-	absConfig := filepath.Join(t.TempDir(), "ghost-claude.yaml")
+	absConfig := filepath.Join(t.TempDir(), "vibedrive.yaml")
 
 	got, err := resolveConfigPath(absConfig, t.TempDir())
 	if err != nil {

@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"ghost_claude/internal/automation"
-	"ghost_claude/internal/claude"
-	codexcli "ghost_claude/internal/codex"
-	"ghost_claude/internal/config"
-	"ghost_claude/internal/plan"
-	"ghost_claude/internal/render"
-	"ghost_claude/internal/todo"
+	"vibedrive/internal/automation"
+	"vibedrive/internal/claude"
+	codexcli "vibedrive/internal/codex"
+	"vibedrive/internal/config"
+	"vibedrive/internal/plan"
+	"vibedrive/internal/render"
+	"vibedrive/internal/todo"
 )
 
 type Runner struct {
@@ -179,7 +179,7 @@ func (r *Runner) runTodo(ctx context.Context) error {
 			if stalled >= r.cfg.MaxStalledIterations {
 				return fmt.Errorf(
 					"iteration %d made no TODO progress; %q is still the next incomplete item. "+
-						"ghost-claude only advances when the first incomplete checkbox changes in %s. "+
+						"vibedrive only advances when the first incomplete checkbox changes in %s. "+
 						"This usually means no step edited the TODO file. "+
 						"Raise max_stalled_iterations if you want automatic retries on the same item",
 					iteration,

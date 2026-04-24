@@ -1,4 +1,4 @@
-module ghost_claude
+module vibedrive
 
 go 1.26.0
 

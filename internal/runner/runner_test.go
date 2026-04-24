@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"ghost_claude/internal/automation"
-	"ghost_claude/internal/claude"
-	codexcli "ghost_claude/internal/codex"
-	"ghost_claude/internal/config"
-	"ghost_claude/internal/plan"
+	"vibedrive/internal/automation"
+	"vibedrive/internal/claude"
+	codexcli "vibedrive/internal/codex"
+	"vibedrive/internal/config"
+	"vibedrive/internal/plan"
 )
 
 type fakeAgent struct {
@@ -106,7 +106,7 @@ func TestRunCreatesFreshClaudeSessionPerTodo(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		TodoFile:             todoPath,
 		MaxStalledIterations: 1,
@@ -168,7 +168,7 @@ func TestRunCreatesFreshClaudeSessionPerMarkedStep(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		TodoFile:             todoPath,
 		MaxStalledIterations: 1,
@@ -225,7 +225,7 @@ func TestRunExplainsStalledTodoProgress(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		TodoFile:             todoPath,
 		MaxStalledIterations: 1,
@@ -256,7 +256,7 @@ func TestRunExplainsStalledTodoProgress(t *testing.T) {
 	}
 
 	message := err.Error()
-	if !strings.Contains(message, "ghost-claude only advances when the first incomplete checkbox changes") {
+	if !strings.Contains(message, "vibedrive only advances when the first incomplete checkbox changes") {
 		t.Fatalf("expected stall error to explain TODO progress detection, got %q", message)
 	}
 	if !strings.Contains(message, "Raise max_stalled_iterations if you want automatic retries") {
@@ -266,7 +266,7 @@ func TestRunExplainsStalledTodoProgress(t *testing.T) {
 
 func TestRunExecutesReadyPlanTasksByDependencyOrder(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -287,7 +287,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		MaxStalledIterations: 1,
@@ -353,7 +353,7 @@ tasks:
 
 func TestRunExplainsStalledPlanProgress(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -368,7 +368,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		MaxStalledIterations: 1,
@@ -414,7 +414,7 @@ tasks:
 
 func TestRunDispatchesCodexPlanStepsWithoutChangingWorkflowNames(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -429,7 +429,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		MaxStalledIterations: 1,
@@ -514,7 +514,7 @@ func TestRunStepLogsCodexPromptPreview(t *testing.T) {
 
 func TestRunPreparesPlanArtifactDirectories(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -529,7 +529,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		Coder:                config.AgentCodex,
@@ -567,7 +567,7 @@ tasks:
 
 func TestRunFailsWhenRequiredOutputMissing(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -582,7 +582,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		Coder:                config.AgentCodex,
@@ -628,7 +628,7 @@ tasks:
 
 func TestRunDispatchesCoderAndReviewerStepsWithClaudeReviewer(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -643,7 +643,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		Coder:                config.AgentCodex,
@@ -695,7 +695,7 @@ tasks:
 
 func TestRunDispatchesCoderAndReviewerStepsWithCodexReviewer(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -710,7 +710,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		Coder:                config.AgentClaude,
@@ -762,7 +762,7 @@ tasks:
 
 func TestRunAllowsSameAgentForCoderAndReviewer(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -777,7 +777,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		Coder:                config.AgentCodex,
@@ -829,7 +829,7 @@ tasks:
 
 func TestRunReusesSingleClaudeSessionWhenCoderAndReviewerMatch(t *testing.T) {
 	dir := t.TempDir()
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -844,7 +844,7 @@ tasks:
 	}
 
 	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "ghost-claude.yaml"),
+		Path:                 filepath.Join(dir, "vibedrive.yaml"),
 		Workspace:            dir,
 		PlanFile:             planPath,
 		Coder:                config.AgentClaude,

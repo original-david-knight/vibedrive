@@ -11,11 +11,11 @@ import (
 	"runtime"
 	"strings"
 
-	"ghost_claude/internal/plan"
+	"vibedrive/internal/plan"
 )
 
-const resultDir = ".ghost-claude/task-results"
-const reviewDir = ".ghost-claude/reviews"
+const resultDir = ".vibedrive/task-results"
+const reviewDir = ".vibedrive/reviews"
 
 type TaskResult struct {
 	Status string `json:"status"`

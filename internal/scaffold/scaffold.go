@@ -7,7 +7,7 @@ import (
 )
 
 const sampleConfig = `workspace: .
-plan_file: ghost-plan.yaml
+plan_file: vibedrive-plan.yaml
 max_iterations: 0
 max_stalled_iterations: 2
 default_workflow: implement

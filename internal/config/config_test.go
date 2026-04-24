@@ -10,7 +10,7 @@ import (
 
 func TestLoadAddsMaxEffortWhenClaudeArgsOmitted(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `steps:
   - name: inspect
@@ -33,7 +33,7 @@ func TestLoadAddsMaxEffortWhenClaudeArgsOmitted(t *testing.T) {
 
 func TestLoadAppendsMaxEffortWhenClaudeArgsDoNotSetIt(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `claude:
   args:
@@ -60,7 +60,7 @@ steps:
 
 func TestLoadPreservesExplicitClaudeEffort(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `claude:
   args:
@@ -87,7 +87,7 @@ steps:
 
 func TestLoadPreservesExplicitClaudePermissionFlag(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `claude:
   args:
@@ -113,7 +113,7 @@ steps:
 
 func TestLoadSetsDefaultCodexTUIArgs(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `steps:
   - name: inspect
@@ -144,7 +144,7 @@ func TestLoadSetsDefaultCodexTUIArgs(t *testing.T) {
 
 func TestLoadAppendsDefaultCodexReasoningWhenMissing(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `codex:
   args:
@@ -176,7 +176,7 @@ steps:
 
 func TestLoadPreservesExplicitCodexReasoning(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `codex:
   args:
@@ -209,7 +209,7 @@ steps:
 
 func TestLoadStripsConflictingCodexPermissionFlags(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `codex:
   args:
@@ -245,7 +245,7 @@ steps:
 
 func TestLoadRejectsExecSubcommandForCodexTUITransport(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `codex:
   transport: tui
@@ -271,7 +271,7 @@ steps:
 
 func TestLoadDefaultsRolesForAgentSteps(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `steps:
   - name: inspect
@@ -298,7 +298,7 @@ func TestLoadDefaultsRolesForAgentSteps(t *testing.T) {
 
 func TestLoadIgnoresConfiguredRuntimeRoles(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `coder: invalid-coder
 reviewer: invalid-reviewer
@@ -353,7 +353,7 @@ func TestValidateAllowsSameAgentForCoderAndReviewer(t *testing.T) {
 
 func TestLoadRejectsPrimaryActorAlias(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	content := `steps:
   - name: execute

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"ghost_claude/internal/claude"
-	"ghost_claude/internal/config"
+	"vibedrive/internal/claude"
+	"vibedrive/internal/config"
 )
 
 type fakeClient struct {
@@ -45,7 +45,7 @@ func (f *fakeBootstrapPlanner) Close() error {
 
 func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 	designPath := filepath.Join(dir, "DESIGN.md")
 
 	if err := os.WriteFile(designPath, []byte("# Design\n\nproject constraints\n"), 0o644); err != nil {
@@ -55,7 +55,7 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 	plannerClient := &fakeBootstrapPlanner{}
 	init := New(io.Discard, io.Discard)
 	init.newPlanner = func(cfg *config.Config, planner string, stdout, stderr io.Writer) (bootstrapPlanner, error) {
-		if cfg.PlanFile != filepath.Join(dir, "ghost-plan.yaml") {
+		if cfg.PlanFile != filepath.Join(dir, "vibedrive-plan.yaml") {
 			t.Fatalf("expected plan path to resolve under workspace, got %q", cfg.PlanFile)
 		}
 		if planner != config.AgentClaude {
@@ -71,7 +71,7 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 	if len(plannerClient.prompts) != 2 {
 		t.Fatalf("expected 2 prompts, got %d", len(plannerClient.prompts))
 	}
-	if !strings.Contains(plannerClient.prompts[0], "Create ghost-plan.yaml") {
+	if !strings.Contains(plannerClient.prompts[0], "Create vibedrive-plan.yaml") {
 		t.Fatalf("expected first prompt to create the plan file, got %q", plannerClient.prompts[0])
 	}
 	if !strings.Contains(plannerClient.prompts[0], "what it learned in that phase") {
@@ -129,8 +129,8 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 
 func TestInitializerRunSkipsExistingPlanWithoutForce(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 	sourcePath := filepath.Join(dir, "DESIGN.md")
 
 	if err := os.WriteFile(planPath, []byte("existing plan\n"), 0o644); err != nil {
@@ -157,8 +157,8 @@ func TestInitializerRunSkipsExistingPlanWithoutForce(t *testing.T) {
 
 func TestInitializerRunRegeneratesPlanWithForce(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 	sourcePath := filepath.Join(dir, "DESIGN.md")
 
 	if err := os.WriteFile(planPath, []byte("existing plan\n"), 0o644); err != nil {
@@ -181,7 +181,7 @@ func TestInitializerRunRegeneratesPlanWithForce(t *testing.T) {
 	if len(plannerClient.prompts) != 2 {
 		t.Fatalf("expected forced init to regenerate the plan, got %d prompts", len(plannerClient.prompts))
 	}
-	if !strings.Contains(plannerClient.prompts[0], "ghost-plan.yaml") {
+	if !strings.Contains(plannerClient.prompts[0], "vibedrive-plan.yaml") {
 		t.Fatalf("expected first prompt to mention the plan path, got %q", plannerClient.prompts[0])
 	}
 	if _, err := os.Stat(planPath); !os.IsNotExist(err) {
@@ -191,7 +191,7 @@ func TestInitializerRunRegeneratesPlanWithForce(t *testing.T) {
 
 func TestInitializerRunUsesWorkspaceFilesWhenSourceOmitted(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	if err := os.WriteFile(filepath.Join(dir, "DESIGN.md"), []byte("design\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
@@ -219,14 +219,14 @@ func TestInitializerRunUsesWorkspaceFilesWhenSourceOmitted(t *testing.T) {
 	if !strings.Contains(plannerClient.prompts[0], "- TEST_PLAN.md") {
 		t.Fatalf("expected first prompt to include TEST_PLAN.md as a source, got %q", plannerClient.prompts[0])
 	}
-	if strings.Contains(plannerClient.prompts[0], "- ghost-claude.yaml") {
+	if strings.Contains(plannerClient.prompts[0], "- vibedrive.yaml") {
 		t.Fatalf("expected generated config to be excluded from default sources, got %q", plannerClient.prompts[0])
 	}
 }
 
 func TestInitializerRunRendersResolvedSourcesInSortedOrder(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 	docsDir := filepath.Join(dir, "docs")
 
 	if err := os.Mkdir(docsDir, 0o755); err != nil {
@@ -296,8 +296,8 @@ func TestNewBootstrapPlannerUsesSelectedClient(t *testing.T) {
 
 func TestInitializerPrintSourcesResolvesPreviewWithoutWritingConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	if err := os.WriteFile(filepath.Join(dir, "DESIGN.md"), []byte("design\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
@@ -323,7 +323,7 @@ func TestInitializerPrintSourcesResolvesPreviewWithoutWritingConfig(t *testing.T
 	if !strings.Contains(output, "- TEST_PLAN.md") {
 		t.Fatalf("expected preview output to include TEST_PLAN.md, got %q", output)
 	}
-	if strings.Contains(output, "- ghost-plan.yaml") {
+	if strings.Contains(output, "- vibedrive-plan.yaml") {
 		t.Fatalf("expected preview output to exclude the plan file, got %q", output)
 	}
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
@@ -368,8 +368,8 @@ func TestResolveSourcesRejectsEmptySelection(t *testing.T) {
 
 func TestResolveSourcesRejectsEmptyDirectorySelection(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	if err := os.WriteFile(configPath, []byte("config\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)

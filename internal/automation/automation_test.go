@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"ghost_claude/internal/plan"
+	"vibedrive/internal/plan"
 )
 
 func TestFinalizeMarksTaskDoneAndCommitsChanges(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)
 
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 	writeFile(t, filepath.Join(dir, "README.md"), "hello\n")
 	writeFile(t, planPath, `project:
   name: demo
@@ -78,7 +78,7 @@ func TestFinalizeMarksTaskInProgressWhenVerificationFails(t *testing.T) {
 	dir := t.TempDir()
 	initGitRepo(t, dir)
 
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 	writeFile(t, filepath.Join(dir, "README.md"), "hello\n")
 	writeFile(t, planPath, `project:
   name: demo

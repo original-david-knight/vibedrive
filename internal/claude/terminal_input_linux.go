@@ -41,7 +41,7 @@ func enterTerminalInputMode(file *os.File) (terminalInputMode, error) {
 	updated := *state
 	// Drop local echo, canonical line buffering, and extended processing so
 	// keystrokes stream straight through to Claude's PTY byte-by-byte. ISIG is
-	// left on so Ctrl+C still delivers SIGINT to ghost-claude and the normal
+	// left on so Ctrl+C still delivers SIGINT to vibedrive and the normal
 	// signal-based shutdown path (which restores termios) runs.
 	updated.Lflag &^= unix.ECHO | unix.ICANON | unix.IEXTEN
 	updated.Cc[unix.VMIN] = 1

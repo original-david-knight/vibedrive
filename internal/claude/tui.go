@@ -192,7 +192,7 @@ func (s *tuiSession) startOutputPump() {
 }
 
 // startInputPump forwards the user's real stdin keystrokes into the Claude
-// PTY. Without this, ghost-claude captures stdin but never relays it, leaving
+// PTY. Without this, vibedrive captures stdin but never relays it, leaving
 // users with no way to intervene (or recover their terminal) when a step
 // hangs. Bytes stream through raw since enterTerminalInputMode disables
 // ICANON/ECHO on Linux.

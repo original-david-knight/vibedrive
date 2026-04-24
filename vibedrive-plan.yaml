@@ -1,10 +1,10 @@
 project:
     name: improve-init-bootstrap
-    objective: Improve `ghost-claude init` so it generates pragmatic plans with trigger-based debt review, explicit source selection, and configurable bootstrap planner behavior without promising runtime capabilities the runner does not implement today.
+    objective: Improve `vibedrive init` so it generates pragmatic plans with trigger-based debt review, explicit source selection, and configurable bootstrap planner behavior without promising runtime capabilities the runner does not implement today.
     source_docs:
         - README.md
-        - cmd/ghost-claude/main.go
-        - cmd/ghost-claude/main_test.go
+        - cmd/vibedrive/main.go
+        - cmd/vibedrive/main_test.go
         - internal/bootstrap/bootstrap.go
         - internal/bootstrap/bootstrap_test.go
         - internal/bootstrap/restart.go
@@ -82,21 +82,21 @@ tasks:
       deps:
         - clarify-init-planning-boundaries
       context_files:
-        - cmd/ghost-claude/main.go
-        - cmd/ghost-claude/main_test.go
+        - cmd/vibedrive/main.go
+        - cmd/vibedrive/main_test.go
         - internal/bootstrap/bootstrap.go
         - internal/bootstrap/bootstrap_test.go
         - README.md
       acceptance:
         - The init CLI accepts repeatable --source flags while preserving existing single positional source support.
-        - '`ghost-claude init --print-sources` resolves, prints, and exits without writing config or bootstrapping the planner.'
+        - '`vibedrive init --print-sources` resolves, prints, and exits without writing config or bootstrapping the planner.'
         - Bootstrap renders resolved sources in deterministic order and returns clear errors for invalid or empty selections.
         - Tests cover argument parsing, preview behavior, and source-resolution edge cases.
         - Leave short task notes describing what was learned in this phase and what should change if the plan is rerun from a fresh environment.
       verify_commands:
-        - go test ./cmd/ghost-claude ./internal/bootstrap
+        - go test ./cmd/vibedrive ./internal/bootstrap
       commit_message: 'feat: improve init source selection'
-      notes: Init now accepts repeated --source flags plus one positional alias, and --print-sources previews the resolved set before scaffold writes. Fresh reruns should rely on the same resolver, which sorts/dedupes sources and excludes generated ghost-claude.yaml and ghost-plan.yaml from default workspace scans.
+      notes: Init now accepts repeated --source flags plus one positional alias, and --print-sources previews the resolved set before scaffold writes. Fresh reruns should rely on the same resolver, which sorts/dedupes sources and excludes generated vibedrive.yaml and vibedrive-plan.yaml from default workspace scans.
     - id: add-init-planner-selection
       title: Let init choose the bootstrap planner
       details: Let users choose whether bootstrap planning runs through Claude or Codex, reusing existing agent naming and validation instead of hard-coding Claude in the initializer.
@@ -105,19 +105,19 @@ tasks:
       deps:
         - support-multiple-init-sources
       context_files:
-        - cmd/ghost-claude/main.go
-        - cmd/ghost-claude/main_test.go
+        - cmd/vibedrive/main.go
+        - cmd/vibedrive/main_test.go
         - internal/bootstrap/bootstrap.go
         - internal/config/config.go
         - README.md
       acceptance:
-        - '`ghost-claude init` accepts `--planner claude|codex` with a documented default.'
+        - '`vibedrive init` accepts `--planner claude|codex` with a documented default.'
         - The initializer routes bootstrap prompts through the selected planner without changing runtime coder and reviewer defaults.
         - Invalid planner values fail fast with a clear error message.
         - Tests cover planner parsing and the selected client path.
         - Leave short task notes describing what was learned in this phase and what should change if the plan is rerun from a fresh environment.
       verify_commands:
-        - go test ./cmd/ghost-claude ./internal/bootstrap ./internal/config
+        - go test ./cmd/vibedrive ./internal/bootstrap ./internal/config
       commit_message: 'feat: add init planner selection'
       notes: Init now accepts --planner with a Claude default, and bootstrap selects Claude or Codex through shared agent resolution without changing runtime coder/reviewer defaults. Fresh reruns need the chosen planner CLI/configured transport available because init now bootstraps through that client path.
     - id: document-init-improvements
@@ -129,15 +129,15 @@ tasks:
         - add-init-planner-selection
       context_files:
         - README.md
-        - cmd/ghost-claude/main.go
-        - ghost-plan.example.yaml
+        - cmd/vibedrive/main.go
+        - vibedrive-plan.example.yaml
       acceptance:
         - README and CLI usage describe trigger-based debt review instead of scheduled cleanup windows.
         - Documentation explains how to pass multiple sources, preview resolved sources, and choose a bootstrap planner.
         - Examples and narrative about init stay aligned with actual code paths and supported flags.
         - Leave short task notes describing what was learned in this phase and what should change if the plan is rerun from a fresh environment.
       verify_commands:
-        - go test ./cmd/ghost-claude
+        - go test ./cmd/vibedrive
       commit_message: 'docs: refresh init documentation'
       notes: README, top-level help, and init help now document repeatable --source inputs, deterministic --print-sources preview, planner selection, and trigger-based debt follow-up. Review-time verification also caught that Go flag help already prints defaults, so planner flag descriptions should not hard-code their own default text on fresh reruns; keep smoke-checking `help`, `init -h`, and temp-workspace `init --print-sources` because the main drift risk is help text, not behavior.
     - id: verify-init-improvements
@@ -149,7 +149,7 @@ tasks:
         - document-init-improvements
       context_files:
         - README.md
-        - cmd/ghost-claude/main.go
+        - cmd/vibedrive/main.go
         - internal/bootstrap/bootstrap.go
         - internal/bootstrap/restart.go
         - internal/plan/plan.go
@@ -159,7 +159,7 @@ tasks:
         - Smoke-check the updated help text and init docs against at least one representative init invocation.
         - Leave short task notes describing what was learned in this phase and what should change if the plan is rerun from a fresh environment.
       verify_commands:
-        - go test ./cmd/ghost-claude ./internal/bootstrap ./internal/plan ./internal/automation
+        - go test ./cmd/vibedrive ./internal/bootstrap ./internal/plan ./internal/automation
         - go test ./...
       commit_message: 'chore: verify init improvements'
-      notes: Targeted `go test ./cmd/ghost-claude ./internal/bootstrap ./internal/plan ./internal/automation` and full `go test ./...` passed. `help`, `init -h`, and a temp-workspace `init --print-sources --source DESIGN.md --source docs/specs DESIGN.md` smoke check matched the README/help text, confirmed deduped sorted source resolution, and confirmed no config or plan files are written; on fresh reruns, keep that smoke check because help/docs drift is still the main risk.
+      notes: Targeted `go test ./cmd/vibedrive ./internal/bootstrap ./internal/plan ./internal/automation` and full `go test ./...` passed. `help`, `init -h`, and a temp-workspace `init --print-sources --source DESIGN.md --source docs/specs DESIGN.md` smoke check matched the README/help text, confirmed deduped sorted source resolution, and confirmed no config or plan files are written; on fresh reruns, keep that smoke check because help/docs drift is still the main risk.

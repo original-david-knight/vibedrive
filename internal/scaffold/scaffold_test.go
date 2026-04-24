@@ -9,7 +9,7 @@ import (
 
 func TestWritePreservesExistingTODO(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 	todoPath := filepath.Join(dir, "TODO.md")
 
 	if err := os.WriteFile(todoPath, []byte("existing todo\n"), 0o644); err != nil {
@@ -27,7 +27,7 @@ func TestWritePreservesExistingTODO(t *testing.T) {
 	if !strings.Contains(string(configContent), "workspace: .") {
 		t.Fatalf("expected sample config content, got %q", string(configContent))
 	}
-	if !strings.Contains(string(configContent), "plan_file: ghost-plan.yaml") {
+	if !strings.Contains(string(configContent), "plan_file: vibedrive-plan.yaml") {
 		t.Fatalf("expected plan mode sample config, got %q", string(configContent))
 	}
 	if !strings.Contains(string(configContent), "codex:") {
@@ -75,7 +75,7 @@ func TestWritePreservesExistingTODO(t *testing.T) {
 
 func TestWriteFailsWhenConfigExists(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	if err := os.WriteFile(configPath, []byte("old config\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
@@ -100,7 +100,7 @@ func TestWriteFailsWhenConfigExists(t *testing.T) {
 
 func TestWriteOverwritesWhenForceIsSet(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 	todoPath := filepath.Join(dir, "TODO.md")
 
 	if err := os.WriteFile(configPath, []byte("old config\n"), 0o644); err != nil {
@@ -154,7 +154,7 @@ func TestWriteOverwritesWhenForceIsSet(t *testing.T) {
 
 func TestWriteDoesNotCreateTODOByDefault(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
 
 	if err := Write(configPath, false); err != nil {
 		t.Fatalf("Write returned error: %v", err)

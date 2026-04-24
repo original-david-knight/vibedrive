@@ -9,7 +9,7 @@ import (
 
 func TestLoadDefaultsEmptyStatusToTodo(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "ghost-plan.yaml")
+	path := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo
@@ -83,7 +83,7 @@ func TestFindNextReadyReturnsNoReadyWhenBlockedByDeps(t *testing.T) {
 
 func TestSavePersistsUpdatedStatus(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "ghost-plan.yaml")
+	path := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	file := &File{
 		Path:    path,
@@ -112,7 +112,7 @@ func TestSavePersistsUpdatedStatus(t *testing.T) {
 
 func TestLoadFlattensColonPrefixedAcceptanceItem(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "ghost-plan.yaml")
+	path := filepath.Join(dir, "vibedrive-plan.yaml")
 
 	content := `project:
   name: demo

@@ -8,16 +8,16 @@ import (
 	"strings"
 	"testing"
 
-	"ghost_claude/internal/claude"
-	"ghost_claude/internal/config"
-	"ghost_claude/internal/plan"
-	"ghost_claude/internal/scaffold"
+	"vibedrive/internal/claude"
+	"vibedrive/internal/config"
+	"vibedrive/internal/plan"
+	"vibedrive/internal/scaffold"
 )
 
 func TestInitializerRestartReplansFromNotesAndResetsProgress(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "ghost-claude.yaml")
-	planPath := filepath.Join(dir, "ghost-plan.yaml")
+	configPath := filepath.Join(dir, "vibedrive.yaml")
+	planPath := filepath.Join(dir, "vibedrive-plan.yaml")
 	designPath := filepath.Join(dir, "DESIGN.md")
 
 	if err := scaffold.Write(configPath, false); err != nil {

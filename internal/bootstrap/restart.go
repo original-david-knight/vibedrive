@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ghost_claude/internal/config"
-	"ghost_claude/internal/plan"
+	"vibedrive/internal/config"
+	"vibedrive/internal/plan"
 )
 
 func (i *Initializer) Restart(ctx context.Context, configPath string) error {

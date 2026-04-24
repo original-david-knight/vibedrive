@@ -11,10 +11,10 @@ import (
 	"strings"
 	"syscall"
 
-	"ghost_claude/internal/automation"
-	"ghost_claude/internal/bootstrap"
-	"ghost_claude/internal/config"
-	"ghost_claude/internal/runner"
+	"vibedrive/internal/automation"
+	"vibedrive/internal/bootstrap"
+	"vibedrive/internal/config"
+	"vibedrive/internal/runner"
 )
 
 func main() {
@@ -54,7 +54,7 @@ func runCommand(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 
-	configPath := fs.String("config", "ghost-claude.yaml", "Path to the workflow config file")
+	configPath := fs.String("config", "vibedrive.yaml", "Path to the workflow config file")
 	workspace := fs.String("workspace", "", "Workspace directory containing the workflow config")
 	dryRun := fs.Bool("dry-run", false, "Render prompts and commands without executing them")
 	coder := fs.String("coder", "", "Coder agent to use at runtime: claude or codex (default: codex)")
@@ -110,7 +110,7 @@ func initCommand(ctx context.Context, args []string) error {
 	fs.Usage = func() {
 		out := fs.Output()
 		fmt.Fprint(out, `Usage:
-  ghost-claude init [-config ghost-claude.yaml] [-workspace /path/to/repo] [--source PATH ...] [--planner claude|codex] [--print-sources] [-force] [SOURCE]
+  vibedrive init [-config vibedrive.yaml] [-workspace /path/to/repo] [--source PATH ...] [--planner claude|codex] [--print-sources] [-force] [SOURCE]
 
 Init source selection:
   Repeat --source to add files or directories. A single positional SOURCE is accepted as one extra source.
@@ -126,7 +126,7 @@ Flags:
 		fs.PrintDefaults()
 	}
 
-	configPath := fs.String("config", "ghost-claude.yaml", "Path to write the workflow config file")
+	configPath := fs.String("config", "vibedrive.yaml", "Path to write the workflow config file")
 	workspace := fs.String("workspace", "", "Workspace directory where the workflow config should be created")
 	var sources stringListFlag
 	fs.Var(&sources, "source", "Source file or directory to use when generating the initial plan (repeatable)")
@@ -169,15 +169,15 @@ func resolveInitPlanner(value string) (string, error) {
 }
 
 func printUsage() {
-	fmt.Println(`ghost-claude
+	fmt.Println(`vibedrive
 
 Usage:
-  ghost-claude run [-config ghost-claude.yaml] [-workspace /path/to/repo] [-dry-run] [-coder claude|codex] [-reviewer claude|codex]
-  ghost-claude init [-config ghost-claude.yaml] [-workspace /path/to/repo] [--source PATH ...] [--planner claude|codex] [--print-sources] [-force] [SOURCE]
-  ghost-claude restart [-config ghost-claude.yaml] [-workspace /path/to/repo]
-  ghost-claude task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
+  vibedrive run [-config vibedrive.yaml] [-workspace /path/to/repo] [-dry-run] [-coder claude|codex] [-reviewer claude|codex]
+  vibedrive init [-config vibedrive.yaml] [-workspace /path/to/repo] [--source PATH ...] [--planner claude|codex] [--print-sources] [-force] [SOURCE]
+  vibedrive restart [-config vibedrive.yaml] [-workspace /path/to/repo]
+  vibedrive task finalize --workspace DIR --plan PATH --task TASK_ID --result PATH [--message MSG]
 
-If no subcommand is provided, ghost-claude behaves like "run".
+If no subcommand is provided, vibedrive behaves like "run".
 
 Init notes:
   Repeat --source to add files or directories. A single positional SOURCE adds one extra source.
@@ -190,7 +190,7 @@ func restartCommand(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("restart", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 
-	configPath := fs.String("config", "ghost-claude.yaml", "Path to the workflow config file")
+	configPath := fs.String("config", "vibedrive.yaml", "Path to the workflow config file")
 	workspace := fs.String("workspace", "", "Workspace directory containing the workflow config")
 
 	if err := fs.Parse(args); err != nil {
@@ -230,7 +230,7 @@ func finalizeTaskCommand(ctx context.Context, args []string) error {
 	fs.SetOutput(os.Stdout)
 
 	workspace := fs.String("workspace", "", "Workspace directory")
-	planPath := fs.String("plan", "", "Path to ghost-plan.yaml")
+	planPath := fs.String("plan", "", "Path to vibedrive-plan.yaml")
 	taskID := fs.String("task", "", "Task ID to update")
 	resultPath := fs.String("result", "", "Path to the task result JSON file")
 	message := fs.String("message", "", "Commit message to use when changes are present")
