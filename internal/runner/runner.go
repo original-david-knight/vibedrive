@@ -17,7 +17,6 @@ import (
 	"vibedrive/internal/config"
 	"vibedrive/internal/plan"
 	"vibedrive/internal/render"
-	"vibedrive/internal/todo"
 )
 
 type Runner struct {
@@ -40,8 +39,6 @@ type TemplateData struct {
 	TaskResultPath string
 	ReviewPath     string
 	Workspace      string
-	TodoFile       string
-	NextTodo       todo.Item
 	PlanFile       string
 	Plan           *plan.File
 	Task           plan.Task
@@ -113,87 +110,11 @@ func New(cfg *config.Config, stdout, stderr io.Writer) (*Runner, error) {
 	}, nil
 }
 
-func (r *Runner) Run(ctx context.Context) (err error) {
-	if strings.TrimSpace(r.cfg.PlanFile) != "" {
-		return r.runPlan(ctx)
+func (r *Runner) Run(ctx context.Context) error {
+	if strings.TrimSpace(r.cfg.PlanFile) == "" {
+		return fmt.Errorf("plan_file is required")
 	}
-	return r.runTodo(ctx)
-}
-
-func (r *Runner) runTodo(ctx context.Context) error {
-	stalled := 0
-
-	for iteration := 1; ; iteration++ {
-		if r.cfg.MaxIterations > 0 && iteration > r.cfg.MaxIterations {
-			return fmt.Errorf("stopped after reaching max_iterations=%d", r.cfg.MaxIterations)
-		}
-
-		nextTodo, err := todo.FindNextIncomplete(r.cfg.TodoFile)
-		if err != nil {
-			if errors.Is(err, todo.ErrNoIncompleteItems) {
-				if r.shouldLogProgress() {
-					fmt.Fprintln(r.stdout, "No incomplete TODO items remain.")
-				}
-				return nil
-			}
-			return err
-		}
-
-		if r.shouldLogProgress() {
-			fmt.Fprintf(r.stdout, "\n== Iteration %d ==\n", iteration)
-			fmt.Fprintf(r.stdout, "Next TODO: %s (line %d)\n", nextTodo.Text, nextTodo.Line)
-		}
-
-		data := TemplateData{
-			ConfigPath:     r.cfg.Path,
-			ExecutablePath: r.executablePath,
-			Iteration:      iteration,
-			Workspace:      r.cfg.Workspace,
-			TodoFile:       r.cfg.TodoFile,
-			NextTodo:       nextTodo,
-			Now:            time.Now(),
-		}
-
-		if err := r.runSteps(ctx, r.cfg.Steps, data); err != nil {
-			return err
-		}
-
-		if r.cfg.DryRun {
-			fmt.Fprintln(r.stdout, "\nDry run complete.")
-			return nil
-		}
-
-		nextAfterIteration, err := todo.FindNextIncomplete(r.cfg.TodoFile)
-		if err != nil {
-			if errors.Is(err, todo.ErrNoIncompleteItems) {
-				if r.shouldLogProgress() {
-					fmt.Fprintln(r.stdout, "\nAll TODO items are complete.")
-				}
-				return nil
-			}
-			return err
-		}
-
-		if nextAfterIteration.Signature() == nextTodo.Signature() {
-			stalled++
-			if stalled >= r.cfg.MaxStalledIterations {
-				return fmt.Errorf(
-					"iteration %d made no TODO progress; %q is still the next incomplete item. "+
-						"vibedrive only advances when the first incomplete checkbox changes in %s. "+
-						"This usually means no step edited the TODO file. "+
-						"Raise max_stalled_iterations if you want automatic retries on the same item",
-					iteration,
-					nextAfterIteration.Text,
-					r.cfg.TodoFile,
-				)
-			}
-			if r.shouldLogProgress() {
-				fmt.Fprintf(r.stderr, "warning: no TODO progress after iteration %d; retrying (%d/%d)\n", iteration, stalled, r.cfg.MaxStalledIterations)
-			}
-		} else {
-			stalled = 0
-		}
-	}
+	return r.runPlan(ctx)
 }
 
 func (r *Runner) runPlan(ctx context.Context) error {
@@ -241,7 +162,6 @@ func (r *Runner) runPlan(ctx context.Context) error {
 			TaskResultPath: automation.ResultPath(r.cfg.Workspace, task.ID),
 			ReviewPath:     automation.ReviewPath(r.cfg.Workspace, task.ID),
 			Workspace:      r.cfg.Workspace,
-			TodoFile:       r.cfg.TodoFile,
 			PlanFile:       r.cfg.PlanFile,
 			Plan:           currentPlan,
 			Task:           task,

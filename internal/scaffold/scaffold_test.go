@@ -7,14 +7,9 @@ import (
 	"testing"
 )
 
-func TestWritePreservesExistingTODO(t *testing.T) {
+func TestWriteWritesSampleConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "vibedrive.yaml")
-	todoPath := filepath.Join(dir, "TODO.md")
-
-	if err := os.WriteFile(todoPath, []byte("existing todo\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
 
 	if err := Write(configPath, false); err != nil {
 		t.Fatalf("Write returned error: %v", err)
@@ -60,17 +55,6 @@ func TestWritePreservesExistingTODO(t *testing.T) {
 	if !strings.Contains(string(configContent), "task\n          - finalize") && !strings.Contains(string(configContent), "- task\n          - finalize") {
 		t.Fatalf("expected scaffolded config to use the task finalize helper, got %q", string(configContent))
 	}
-	if strings.Contains(string(configContent), "todo_file:") {
-		t.Fatalf("expected scaffolded config to stop pinning todo_file, got %q", string(configContent))
-	}
-
-	content, err := os.ReadFile(todoPath)
-	if err != nil {
-		t.Fatalf("ReadFile returned error: %v", err)
-	}
-	if string(content) != "existing todo\n" {
-		t.Fatalf("expected existing TODO to be preserved, got %q", string(content))
-	}
 }
 
 func TestWriteFailsWhenConfigExists(t *testing.T) {
@@ -101,12 +85,8 @@ func TestWriteFailsWhenConfigExists(t *testing.T) {
 func TestWriteOverwritesWhenForceIsSet(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "vibedrive.yaml")
-	todoPath := filepath.Join(dir, "TODO.md")
 
 	if err := os.WriteFile(configPath, []byte("old config\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-	if err := os.WriteFile(todoPath, []byte("old todo\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
 
@@ -138,29 +118,5 @@ func TestWriteOverwritesWhenForceIsSet(t *testing.T) {
 	}
 	if strings.Contains(string(configContent), "fresh_session: true") {
 		t.Fatalf("expected scaffolded config to avoid extra Claude sessions in the default workflow, got %q", string(configContent))
-	}
-	if strings.Contains(string(configContent), "todo_file:") {
-		t.Fatalf("expected scaffolded config to stop pinning todo_file, got %q", string(configContent))
-	}
-
-	todoContent, err := os.ReadFile(todoPath)
-	if err != nil {
-		t.Fatalf("ReadFile returned error: %v", err)
-	}
-	if string(todoContent) != "old todo\n" {
-		t.Fatalf("expected existing TODO to be preserved even with force, got %q", string(todoContent))
-	}
-}
-
-func TestWriteDoesNotCreateTODOByDefault(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "vibedrive.yaml")
-
-	if err := Write(configPath, false); err != nil {
-		t.Fatalf("Write returned error: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(dir, "TODO.md")); !os.IsNotExist(err) {
-		t.Fatalf("expected TODO.md to be left alone, stat err=%v", err)
 	}
 }

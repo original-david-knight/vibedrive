@@ -41,7 +41,6 @@ type Config struct {
 	BaseDir              string              `yaml:"-"`
 	DryRun               bool                `yaml:"dry_run"`
 	Workspace            string              `yaml:"workspace"`
-	TodoFile             string              `yaml:"todo_file"`
 	PlanFile             string              `yaml:"plan_file"`
 	MaxIterations        int                 `yaml:"max_iterations"`
 	MaxStalledIterations int                 `yaml:"max_stalled_iterations"`
@@ -115,20 +114,13 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.Workspace = filepath.Clean(cfg.Workspace)
 
-	if cfg.TodoFile == "" {
-		cfg.TodoFile = "TODO.md"
+	if cfg.PlanFile == "" {
+		cfg.PlanFile = "vibedrive-plan.yaml"
 	}
-	if !filepath.IsAbs(cfg.TodoFile) {
-		cfg.TodoFile = filepath.Join(cfg.Workspace, cfg.TodoFile)
+	if !filepath.IsAbs(cfg.PlanFile) {
+		cfg.PlanFile = filepath.Join(cfg.Workspace, cfg.PlanFile)
 	}
-	cfg.TodoFile = filepath.Clean(cfg.TodoFile)
-
-	if cfg.PlanFile != "" {
-		if !filepath.IsAbs(cfg.PlanFile) {
-			cfg.PlanFile = filepath.Join(cfg.Workspace, cfg.PlanFile)
-		}
-		cfg.PlanFile = filepath.Clean(cfg.PlanFile)
-	}
+	cfg.PlanFile = filepath.Clean(cfg.PlanFile)
 
 	if cfg.Claude.Command == "" {
 		cfg.Claude.Command = "claude"
@@ -271,7 +263,7 @@ func (c *Config) Validate() error {
 func defaultConfig() Config {
 	return Config{
 		Workspace:            ".",
-		TodoFile:             "TODO.md",
+		PlanFile:             "vibedrive-plan.yaml",
 		MaxStalledIterations: 2,
 		Coder:                AgentCodex,
 		Reviewer:             AgentClaude,

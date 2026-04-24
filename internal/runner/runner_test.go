@@ -20,7 +20,6 @@ type fakeAgent struct {
 	prompts         []string
 	sessionIDs      []string
 	closedSessionID []string
-	todoPath        string
 	planPath        string
 	closeEvents     *[]string
 	closeLabel      string
@@ -32,9 +31,6 @@ func (f *fakeAgent) RunPrompt(_ context.Context, session *claude.Session, prompt
 
 	if strings.HasPrefix(prompt, "write ") {
 		return writeOutput(strings.TrimPrefix(prompt, "write "))
-	}
-	if strings.HasPrefix(prompt, "mark ") {
-		return markFirstIncompleteTodoDone(f.todoPath)
 	}
 	if strings.HasPrefix(prompt, "finish task ") {
 		taskID := strings.TrimPrefix(prompt, "finish task ")
@@ -67,7 +63,6 @@ func (f *fakeAgent) IsFullscreenTUI() bool {
 type fakeCodex struct {
 	prompts         []string
 	closedSessionID []string
-	todoPath        string
 	planPath        string
 	closeEvents     *[]string
 	closeLabel      string
@@ -78,9 +73,6 @@ func (f *fakeCodex) RunPrompt(_ context.Context, session *codexcli.Session, prom
 
 	if strings.HasPrefix(prompt, "write ") {
 		return writeOutput(strings.TrimPrefix(prompt, "write "))
-	}
-	if strings.HasPrefix(prompt, "mark ") {
-		return markFirstIncompleteTodoDone(f.todoPath)
 	}
 	if strings.HasPrefix(prompt, "finish task ") {
 		taskID := strings.TrimPrefix(prompt, "finish task ")
@@ -108,178 +100,6 @@ func (f *fakeCodex) Close(_ *codexcli.Session) error {
 
 func (f *fakeCodex) IsFullscreenTUI() bool {
 	return false
-}
-
-func TestRunCreatesFreshClaudeSessionPerTodo(t *testing.T) {
-	dir := t.TempDir()
-	todoPath := filepath.Join(dir, "TODO.md")
-
-	content := `# TODO
-
-- [ ] first item
-- [ ] second item
-`
-	if err := os.WriteFile(todoPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
-	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "vibedrive.yaml"),
-		Workspace:            dir,
-		TodoFile:             todoPath,
-		MaxStalledIterations: 1,
-		Claude: config.ClaudeConfig{
-			SessionStrategy: config.SessionStrategySessionID,
-		},
-		Steps: []config.Step{
-			{Name: "analyze", Type: config.StepTypeClaude, Prompt: "analyze {{ .NextTodo.Text }}"},
-			{Name: "mark", Type: config.StepTypeClaude, Prompt: "mark {{ .NextTodo.Text }}"},
-		},
-	}
-
-	agent := &fakeAgent{todoPath: todoPath}
-	sessionCount := 0
-
-	r := &Runner{
-		cfg:    cfg,
-		stdout: io.Discard,
-		stderr: io.Discard,
-		claude: agent,
-		newSession: func(_ string) (*claude.Session, error) {
-			sessionCount++
-			return &claude.Session{
-				Strategy: config.SessionStrategySessionID,
-				ID:       "session-" + string(rune('0'+sessionCount)),
-			}, nil
-		},
-	}
-
-	if err := r.Run(context.Background()); err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-
-	if sessionCount != 2 {
-		t.Fatalf("expected 2 sessions, got %d", sessionCount)
-	}
-
-	wantPromptSessions := []string{"session-1", "session-1", "session-2", "session-2"}
-	if strings.Join(agent.sessionIDs, ",") != strings.Join(wantPromptSessions, ",") {
-		t.Fatalf("expected prompt session IDs %v, got %v", wantPromptSessions, agent.sessionIDs)
-	}
-
-	wantClosedSessions := []string{"session-1", "session-2"}
-	if strings.Join(agent.closedSessionID, ",") != strings.Join(wantClosedSessions, ",") {
-		t.Fatalf("expected closed session IDs %v, got %v", wantClosedSessions, agent.closedSessionID)
-	}
-}
-
-func TestRunCreatesFreshClaudeSessionPerMarkedStep(t *testing.T) {
-	dir := t.TempDir()
-	todoPath := filepath.Join(dir, "TODO.md")
-
-	content := `# TODO
-
-- [ ] first item
-`
-	if err := os.WriteFile(todoPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
-	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "vibedrive.yaml"),
-		Workspace:            dir,
-		TodoFile:             todoPath,
-		MaxStalledIterations: 1,
-		Claude: config.ClaudeConfig{
-			SessionStrategy: config.SessionStrategySessionID,
-		},
-		Steps: []config.Step{
-			{Name: "analyze", Type: config.StepTypeClaude, Prompt: "analyze {{ .NextTodo.Text }}"},
-			{Name: "mark", Type: config.StepTypeClaude, Prompt: "mark {{ .NextTodo.Text }}", FreshSession: true},
-		},
-	}
-
-	agent := &fakeAgent{todoPath: todoPath}
-	sessionCount := 0
-
-	r := &Runner{
-		cfg:    cfg,
-		stdout: io.Discard,
-		stderr: io.Discard,
-		claude: agent,
-		newSession: func(_ string) (*claude.Session, error) {
-			sessionCount++
-			return &claude.Session{
-				Strategy: config.SessionStrategySessionID,
-				ID:       "session-" + string(rune('0'+sessionCount)),
-			}, nil
-		},
-	}
-
-	if err := r.Run(context.Background()); err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-
-	if sessionCount != 2 {
-		t.Fatalf("expected 2 sessions, got %d", sessionCount)
-	}
-
-	wantPromptSessions := []string{"session-1", "session-2"}
-	if strings.Join(agent.sessionIDs, ",") != strings.Join(wantPromptSessions, ",") {
-		t.Fatalf("expected prompt session IDs %v, got %v", wantPromptSessions, agent.sessionIDs)
-	}
-}
-
-func TestRunExplainsStalledTodoProgress(t *testing.T) {
-	dir := t.TempDir()
-	todoPath := filepath.Join(dir, "TODO.md")
-
-	content := `# TODO
-
-- [ ] first item
-`
-	if err := os.WriteFile(todoPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-
-	cfg := &config.Config{
-		Path:                 filepath.Join(dir, "vibedrive.yaml"),
-		Workspace:            dir,
-		TodoFile:             todoPath,
-		MaxStalledIterations: 1,
-		Claude: config.ClaudeConfig{
-			SessionStrategy: config.SessionStrategySessionID,
-		},
-		Steps: []config.Step{
-			{Name: "analyze", Type: config.StepTypeClaude, Prompt: "analyze {{ .NextTodo.Text }}"},
-		},
-	}
-
-	r := &Runner{
-		cfg:    cfg,
-		stdout: io.Discard,
-		stderr: io.Discard,
-		claude: &fakeAgent{todoPath: todoPath},
-		newSession: func(_ string) (*claude.Session, error) {
-			return &claude.Session{
-				Strategy: config.SessionStrategySessionID,
-				ID:       "session-1",
-			}, nil
-		},
-	}
-
-	err := r.Run(context.Background())
-	if err == nil {
-		t.Fatal("expected Run to fail when the TODO file does not change")
-	}
-
-	message := err.Error()
-	if !strings.Contains(message, "vibedrive only advances when the first incomplete checkbox changes") {
-		t.Fatalf("expected stall error to explain TODO progress detection, got %q", message)
-	}
-	if !strings.Contains(message, "Raise max_stalled_iterations if you want automatic retries") {
-		t.Fatalf("expected stall error to suggest retries, got %q", message)
-	}
 }
 
 func TestRunExecutesReadyPlanTasksByDependencyOrder(t *testing.T) {
@@ -985,16 +805,6 @@ tasks:
 	if strings.Join(claudeAgent.closedSessionID, ",") != strings.Join(wantClosedSessions, ",") {
 		t.Fatalf("expected closed session IDs %v, got %v", wantClosedSessions, claudeAgent.closedSessionID)
 	}
-}
-
-func markFirstIncompleteTodoDone(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	updated := strings.Replace(string(data), "- [ ]", "- [x]", 1)
-	return os.WriteFile(path, []byte(updated), 0o644)
 }
 
 func updateTask(path, taskID, status, notes string) error {

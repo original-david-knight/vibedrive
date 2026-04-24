@@ -98,9 +98,6 @@ func TestInitializerRunWritesConfigAndBootstrapsPlan(t *testing.T) {
 	if !strings.Contains(plannerClient.prompts[0], "DESIGN.md") {
 		t.Fatalf("expected first prompt to reference DESIGN.md, got %q", plannerClient.prompts[0])
 	}
-	if strings.Contains(plannerClient.prompts[0], "TODO.md") {
-		t.Fatalf("expected first prompt to stop assuming TODO.md, got %q", plannerClient.prompts[0])
-	}
 	if !strings.Contains(plannerClient.prompts[1], "Perform a critical review of the plan") {
 		t.Fatalf("expected second prompt to request a critical plan review, got %q", plannerClient.prompts[1])
 	}
