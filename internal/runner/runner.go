@@ -38,6 +38,7 @@ type TemplateData struct {
 	SessionID      string
 	TaskResultPath string
 	ReviewPath     string
+	TaskNotesPath  string
 	Workspace      string
 	PlanFile       string
 	Plan           *plan.File
@@ -155,12 +156,18 @@ func (r *Runner) runPlan(ctx context.Context) error {
 			fmt.Fprintf(r.stdout, "Next task: %s (%s) via workflow %s\n", task.Title, task.ID, workflowName)
 		}
 
+		taskSignature, err := r.taskProgressSignature(task)
+		if err != nil {
+			return err
+		}
+
 		data := TemplateData{
 			ConfigPath:     r.cfg.Path,
 			ExecutablePath: r.executablePath,
 			Iteration:      iteration,
 			TaskResultPath: automation.ResultPath(r.cfg.Workspace, task.ID),
 			ReviewPath:     automation.ReviewPath(r.cfg.Workspace, task.ID),
+			TaskNotesPath:  automation.NotesPath(r.cfg.Workspace, task.ID),
 			Workspace:      r.cfg.Workspace,
 			PlanFile:       r.cfg.PlanFile,
 			Plan:           currentPlan,
@@ -181,6 +188,10 @@ func (r *Runner) runPlan(ctx context.Context) error {
 			return nil
 		}
 
+		if err := r.finalizeTaskResultIfPresent(ctx, task, data); err != nil {
+			return err
+		}
+
 		nextPlan, err := plan.Load(r.cfg.PlanFile)
 		if err != nil {
 			return err
@@ -191,12 +202,17 @@ func (r *Runner) runPlan(ctx context.Context) error {
 			return fmt.Errorf("task %q disappeared from %s during iteration %d", task.ID, r.cfg.PlanFile, iteration)
 		}
 
-		if updatedTask.ProgressSignature() == task.ProgressSignature() {
+		updatedTaskSignature, err := r.taskProgressSignature(updatedTask)
+		if err != nil {
+			return err
+		}
+
+		if updatedTaskSignature == taskSignature {
 			stalled++
 			if stalled >= r.cfg.MaxStalledIterations {
 				return fmt.Errorf(
 					"iteration %d made no task progress; %q (%s) still has status %q in %s. "+
-						"The workflow must update the selected task's status or notes when work progresses",
+						"The workflow must update the selected task's status or write task notes when work progresses",
 					iteration,
 					updatedTask.Title,
 					updatedTask.ID,
@@ -211,6 +227,43 @@ func (r *Runner) runPlan(ctx context.Context) error {
 			stalled = 0
 		}
 	}
+}
+
+func (r *Runner) taskProgressSignature(task plan.Task) (string, error) {
+	notes, err := automation.LoadNotes(r.cfg.Workspace, task.ID)
+	if err != nil {
+		return "", fmt.Errorf("load task notes for %q: %w", task.ID, err)
+	}
+	if strings.TrimSpace(notes) == "" {
+		notes = task.Notes
+	}
+	return fmt.Sprintf("%s:%s:%s", task.ID, strings.TrimSpace(strings.ToLower(task.Status)), strings.TrimSpace(notes)), nil
+}
+
+func (r *Runner) finalizeTaskResultIfPresent(ctx context.Context, task plan.Task, data TemplateData) error {
+	if _, err := os.Stat(data.TaskResultPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat task result %q: %w", data.TaskResultPath, err)
+	}
+
+	message := strings.TrimSpace(task.CommitMessage)
+	if message == "" {
+		message = task.Title
+	}
+
+	if r.shouldLogProgress() {
+		fmt.Fprintf(r.stdout, "\n--> exec step: finalize-task\n")
+	}
+
+	return automation.Finalize(ctx, automation.FinalizeOptions{
+		Workspace:     r.cfg.Workspace,
+		PlanFile:      r.cfg.PlanFile,
+		TaskID:        task.ID,
+		ResultPath:    data.TaskResultPath,
+		CommitMessage: message,
+	}, r.stdout, r.stderr)
 }
 
 func (r *Runner) createSession() (*claude.Session, error) {
@@ -504,7 +557,7 @@ func (r *Runner) runStep(ctx context.Context, session *claude.Session, codexSess
 }
 
 func ensurePlanArtifactDirectories(data TemplateData) error {
-	return prepareOutputDirectories([]string{data.TaskResultPath, data.ReviewPath})
+	return prepareOutputDirectories([]string{data.TaskResultPath, data.ReviewPath, data.TaskNotesPath})
 }
 
 func renderRequiredOutputs(outputs []string, data TemplateData, workspace string) ([]string, error) {
